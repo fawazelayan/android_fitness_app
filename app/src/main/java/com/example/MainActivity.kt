@@ -92,24 +92,27 @@ fun MainTrackerScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item(key = "app_header") {
-            Spacer(modifier = Modifier.height(8.dp))
-            HeaderSection(
-                isDarkMode = isDarkMode,
-                onToggleDarkMode = { viewModel.toggleDarkMode() },
-                avatarBackground = AvatarBackground,
-                avatarText = AvatarText,
-                textColorTitle = ThemeTextTitle,
-                textColorSubtitle = ThemeTextSubtitle,
-                activeProfile = activeProfile,
-                profile1Name = profile1Name,
-                profile2Name = profile2Name,
-                onSwitchProfile = { viewModel.switchProfile(it) },
-                onRenameProfile = { id, name -> viewModel.renameProfile(id, name) },
-                currentScreen = currentScreen,
-                onScreenChange = { currentScreen = it }
-            )
+        if (currentScreen != "welcome") {
+            item(key = "app_header") {
+                Spacer(modifier = Modifier.height(8.dp))
+                HeaderSection(
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { viewModel.toggleDarkMode() },
+                    avatarBackground = AvatarBackground,
+                    avatarText = AvatarText,
+                    textColorTitle = ThemeTextTitle,
+                    textColorSubtitle = ThemeTextSubtitle,
+                    activeProfile = activeProfile,
+                    profile1Name = profile1Name,
+                    profile2Name = profile2Name,
+                    onSwitchProfile = { viewModel.switchProfile(it) },
+                    onRenameProfile = { id, name -> viewModel.renameProfile(id, name) },
+                    currentScreen = currentScreen,
+                    onScreenChange = { currentScreen = it }
+                )
+            }
         }
+
 
         if (currentScreen == "welcome") {
             item(key = "welcome_screen_content") {

@@ -252,9 +252,30 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private suspend fun getOrCreateTodayIntakeForActiveProfile(): DailyIntake {
+        val profile = _activeProfile.value
+        val todayStr = repository.getTodayDateString()
+        val dbKey = "${profile}_$todayStr"
+        val existing = repository.getIntakeForDate(dbKey)
+        if (existing != null) {
+            return existing
+        }
+        val cMax = _creatineMax.value
+        val pMax = _proteinMax.value
+        val newIntake = DailyIntake(
+            date = dbKey,
+            creatineCount = 0,
+            proteinCount = 0,
+            creatineMax = cMax,
+            proteinMax = pMax
+        )
+        repository.updateIntake(newIntake)
+        return newIntake
+    }
+
     fun incrementCreatine() {
         viewModelScope.launch {
-            val current = _todayIntake.value ?: repository.getOrCreateTodayIntake()
+            val current = _todayIntake.value ?: getOrCreateTodayIntakeForActiveProfile()
             val cMax = _creatineMax.value
             
             if (current.creatineCount < cMax) {
@@ -271,26 +292,9 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun decrementCreatine() {
-        viewModelScope.launch {
-            val current = _todayIntake.value ?: repository.getOrCreateTodayIntake()
-            if (current.creatineCount > 0) {
-                val newCount = current.creatineCount - 1
-                val ticked = newCount >= current.creatineMax
-                val updated = current.copy(
-                    creatineCount = newCount,
-                    creatineTicked = ticked,
-                    isTicked = ticked || current.proteinTicked
-                )
-                repository.updateIntake(updated)
-                _todayIntake.value = updated
-            }
-        }
-    }
-
     fun incrementProtein() {
         viewModelScope.launch {
-            val current = _todayIntake.value ?: repository.getOrCreateTodayIntake()
+            val current = _todayIntake.value ?: getOrCreateTodayIntakeForActiveProfile()
             val pMax = _proteinMax.value
             
             if (current.proteinCount < pMax) {
@@ -307,9 +311,26 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun decrementCreatine() {
+        viewModelScope.launch {
+            val current = _todayIntake.value ?: getOrCreateTodayIntakeForActiveProfile()
+            if (current.creatineCount > 0) {
+                val newCount = current.creatineCount - 1
+                val ticked = newCount >= current.creatineMax
+                val updated = current.copy(
+                    creatineCount = newCount,
+                    creatineTicked = ticked,
+                    isTicked = ticked || current.proteinTicked
+                )
+                repository.updateIntake(updated)
+                _todayIntake.value = updated
+            }
+        }
+    }
+
     fun decrementProtein() {
         viewModelScope.launch {
-            val current = _todayIntake.value ?: repository.getOrCreateTodayIntake()
+            val current = _todayIntake.value ?: getOrCreateTodayIntakeForActiveProfile()
             if (current.proteinCount > 0) {
                 val newCount = current.proteinCount - 1
                 val ticked = newCount >= current.proteinMax
@@ -323,6 +344,7 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
 
     fun setCreatineGoal(max: Int) {
         if (max <= 0) return
