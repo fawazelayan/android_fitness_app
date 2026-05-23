@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -36,19 +38,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
             MyApplicationTheme(darkTheme = isDarkMode, dynamicColor = false) {
-                val themeBg = if (isDarkMode) Color(0xFF140F0D) else Color(0xFFFDF8F6)
-                Scaffold(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(themeBg),
-                    containerColor = themeBg,
-                    contentWindowInsets = WindowInsets.safeDrawing
-                ) { innerPadding ->
-                    MainTrackerScreen(
-                        viewModel = viewModel,
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                MainTrackerScreen(viewModel = viewModel)
             }
         }
     }
@@ -85,13 +75,26 @@ fun MainTrackerScreen(
     val AvatarBackground = if (isDarkMode) Color(0xFFBD8E85) else Color(0xFFEAC2BA)
     val AvatarText = if (isDarkMode) Color(0xFF2E0904) else Color(0xFF531B10)
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(themeBg)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    Scaffold(
+        modifier = modifier.fillMaxSize().background(themeBg),
+        containerColor = themeBg,
+        contentWindowInsets = WindowInsets.safeDrawing,
+        bottomBar = {
+            AppBottomNavigationBar(
+                currentScreen = currentScreen,
+                onScreenSelected = { currentScreen = it },
+                isDarkMode = isDarkMode
+            )
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(themeBg)
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         if (currentScreen != "welcome") {
             item(key = "app_header") {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -157,6 +160,22 @@ fun MainTrackerScreen(
             }
         }
 
+        if (currentScreen == "logs") {
+            item(key = "logs_screen_content") {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Text("Logs Screen Coming Soon", color = ThemeTextTitle)
+                }
+            }
+        }
+
+        if (currentScreen == "goals") {
+            item(key = "goals_screen_content") {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Text("Goals Screen Coming Soon", color = ThemeTextTitle)
+                }
+            }
+        }
+
         if (currentScreen == "profile") {
             item(key = "profile_screen_content") {
                 ProfileScreen(
@@ -165,5 +184,61 @@ fun MainTrackerScreen(
                 )
             }
         }
+        }
+    }
+}
+
+@Composable
+fun AppBottomNavigationBar(
+    currentScreen: String,
+    onScreenSelected: (String) -> Unit,
+    isDarkMode: Boolean
+) {
+    val containerColor = if (isDarkMode) Color(0xFF1D1714) else Color.White
+    val contentColor = if (isDarkMode) Color.White else Color(0xFF2E1A16)
+    val activeIconColor = if (isDarkMode) Color(0xFFFFB4A2) else Color(0xFFD84315)
+    val inactiveIconColor = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244)
+
+    NavigationBar(
+        containerColor = containerColor,
+        contentColor = contentColor,
+        tonalElevation = 8.dp
+    ) {
+        val navColors = NavigationBarItemDefaults.colors(
+            selectedIconColor = activeIconColor,
+            unselectedIconColor = inactiveIconColor,
+            selectedTextColor = activeIconColor,
+            unselectedTextColor = inactiveIconColor,
+            indicatorColor = Color.Transparent
+        )
+
+        NavigationBarItem(
+            selected = currentScreen == "welcome",
+            onClick = { onScreenSelected("welcome") },
+            icon = { Icon(if (currentScreen == "welcome") Icons.Filled.Home else Icons.Outlined.Home, contentDescription = "Home") },
+            label = { Text("Home", fontSize = 10.sp) },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = currentScreen == "logs",
+            onClick = { onScreenSelected("logs") },
+            icon = { Icon(if (currentScreen == "logs") Icons.Filled.ListAlt else Icons.Outlined.ListAlt, contentDescription = "Logs") },
+            label = { Text("Logs", fontSize = 10.sp) },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = currentScreen == "goals",
+            onClick = { onScreenSelected("goals") },
+            icon = { Icon(if (currentScreen == "goals") Icons.Filled.TrackChanges else Icons.Outlined.TrackChanges, contentDescription = "Goals") },
+            label = { Text("Goals", fontSize = 10.sp) },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = currentScreen == "profile",
+            onClick = { onScreenSelected("profile") },
+            icon = { Icon(if (currentScreen == "profile") Icons.Filled.Person else Icons.Outlined.Person, contentDescription = "Profile") },
+            label = { Text("Profile", fontSize = 10.sp) },
+            colors = navColors
+        )
     }
 }

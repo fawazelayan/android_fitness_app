@@ -485,17 +485,16 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
             val finalCTicked = cTicked
             val finalPTicked = pTicked
 
-            if (existing != null) {
-                val updated = existing.copy(
+            val updatedRecord = if (existing != null) {
+                existing.copy(
                     creatineCount = finalCCount,
                     proteinCount = finalPCount,
                     creatineTicked = finalCTicked,
                     proteinTicked = finalPTicked,
                     isTicked = finalCTicked || finalPTicked
                 )
-                repository.updateIntake(updated)
             } else {
-                val newRecord = DailyIntake(
+                DailyIntake(
                     date = dbKey,
                     creatineCount = finalCCount,
                     proteinCount = finalPCount,
@@ -505,7 +504,13 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
                     proteinTicked = finalPTicked,
                     isTicked = finalCTicked || finalPTicked
                 )
-                repository.updateIntake(newRecord)
+            }
+            
+            repository.updateIntake(updatedRecord)
+            
+            // Instantly update UI for today without waiting for Room flow emission
+            if (dateStr == repository.getTodayDateString()) {
+                _todayIntake.value = updatedRecord
             }
         }
     }

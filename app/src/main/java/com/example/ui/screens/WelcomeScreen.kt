@@ -28,6 +28,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import com.example.IntakeViewModel
 import java.util.Calendar
 import java.util.Locale
@@ -67,7 +70,21 @@ fun NeonProgressDial(
                 )
             )
             
-            // 2. Draw active neon progress arc
+            // 2. Draw active neon progress arc with Glow Effect
+            if (sweepAngle > 0f) {
+                drawIntoCanvas { canvas ->
+                    val paint = android.graphics.Paint().apply {
+                        color = neonColor.toArgb()
+                        this.strokeWidth = strokeWidth * 1.5f
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeCap = android.graphics.Paint.Cap.ROUND
+                        maskFilter = android.graphics.BlurMaskFilter(20f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+                    }
+                    val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
+                    canvas.nativeCanvas.drawArc(rect, 135f, sweepAngle, false, paint)
+                }
+            }
+            // Core bright arc
             drawArc(
                 color = neonColor,
                 startAngle = 135f,
@@ -448,7 +465,7 @@ fun WelcomeScreen(
                     .size(44.dp)
                     .border(BorderStroke(2.dp, avatarBrush), CircleShape)
                     .clip(CircleShape)
-                    .background(if (isDarkMode) Color(0xFF1D1714) else Color(0xFFFFEBE6))
+                    .background(Color.Transparent)
                     .clickable { showProfileDialog = true }
                     .testTag("avatar_profile_navigation"),
                 contentAlignment = Alignment.Center
@@ -471,7 +488,7 @@ fun WelcomeScreen(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(if (isDarkMode) Color(0xFF1D1714) else Color(0xFFFFEBE6))
+                        .background(Color.Transparent)
                 ) {
                     Icon(
                         imageVector = if (waterRemindersEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsNone,
@@ -486,7 +503,7 @@ fun WelcomeScreen(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(if (isDarkMode) Color(0xFF1D1714) else Color(0xFFFFEBE6))
+                        .background(Color.Transparent)
                 ) {
                     Icon(
                         imageVector = if (isDarkMode) Icons.Filled.NightsStay else Icons.Filled.WbSunny,
@@ -580,30 +597,7 @@ fun WelcomeScreen(
             )
         }
 
-        // Bottom Navigation Quick Shortcuts (styled matching the neon theme)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            NavButton(
-                text = "Daily Scoops",
-                icon = Icons.Filled.FitnessCenter,
-                isDark = isDarkMode,
-                activeColor = if (isDarkMode) Color(0xFFFF7A5C) else Color(0xFFD35400),
-                onClick = { onScreenChange("scoops") },
-                modifier = Modifier.weight(1f).testTag("goto_scoops")
-            )
-            NavButton(
-                text = "Nutrition",
-                icon = Icons.Filled.Restaurant,
-                isDark = isDarkMode,
-                activeColor = if (isDarkMode) Color(0xFF69F0AE) else Color(0xFF2E7D32),
-                onClick = { onScreenChange("nutrition") },
-                modifier = Modifier.weight(1f).testTag("goto_nutrition")
-            )
-        }
+
     }
 
     // Switch / Edit Profile dialog (copied from HeaderSection to remain accessible)
