@@ -15,9 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,7 +99,7 @@ fun MainTrackerScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-        if (currentScreen != "welcome") {
+        if (currentScreen != "welcome" && currentScreen != "water") {
             item(key = "app_header") {
                 Spacer(modifier = Modifier.height(8.dp))
                 HeaderSection(
@@ -215,29 +219,89 @@ fun AppBottomNavigationBar(
         NavigationBarItem(
             selected = currentScreen == "welcome",
             onClick = { onScreenSelected("welcome") },
-            icon = { Icon(if (currentScreen == "welcome") Icons.Filled.Home else Icons.Outlined.Home, contentDescription = "Home") },
-            label = { Text("Home", fontSize = 10.sp) },
+            icon = { 
+                Box(contentAlignment = Alignment.Center) {
+                    if (currentScreen == "welcome") {
+                        Icon(Icons.Filled.Dashboard, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
+                    }
+                    Icon(if (currentScreen == "welcome") Icons.Filled.Dashboard else Icons.Outlined.Dashboard, contentDescription = "Dashboard")
+                }
+            },
+            label = { 
+                Text(
+                    "Dashboard", 
+                    fontSize = 10.sp,
+                    style = if (currentScreen == "welcome") TextStyle(
+                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
+                    ) else TextStyle.Default
+                ) 
+            },
             colors = navColors
         )
         NavigationBarItem(
             selected = currentScreen == "logs",
             onClick = { onScreenSelected("logs") },
-            icon = { Icon(if (currentScreen == "logs") Icons.Filled.ListAlt else Icons.Outlined.ListAlt, contentDescription = "Logs") },
-            label = { Text("Logs", fontSize = 10.sp) },
+            icon = { 
+                Box(contentAlignment = Alignment.Center) {
+                    if (currentScreen == "logs") {
+                        Icon(Icons.Filled.Article, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
+                    }
+                    Icon(if (currentScreen == "logs") Icons.Filled.Article else Icons.Outlined.Article, contentDescription = "Logs")
+                }
+            },
+            label = { 
+                Text(
+                    "Logs", 
+                    fontSize = 10.sp,
+                    style = if (currentScreen == "logs") TextStyle(
+                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
+                    ) else TextStyle.Default
+                ) 
+            },
             colors = navColors
         )
         NavigationBarItem(
             selected = currentScreen == "goals",
             onClick = { onScreenSelected("goals") },
-            icon = { Icon(if (currentScreen == "goals") Icons.Filled.TrackChanges else Icons.Outlined.TrackChanges, contentDescription = "Goals") },
-            label = { Text("Goals", fontSize = 10.sp) },
+            icon = { 
+                Box(contentAlignment = Alignment.Center) {
+                    if (currentScreen == "goals") {
+                        Icon(Icons.Filled.TrackChanges, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
+                    }
+                    Icon(if (currentScreen == "goals") Icons.Filled.TrackChanges else Icons.Outlined.TrackChanges, contentDescription = "Goals")
+                }
+            },
+            label = { 
+                Text(
+                    "Goals", 
+                    fontSize = 10.sp,
+                    style = if (currentScreen == "goals") TextStyle(
+                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
+                    ) else TextStyle.Default
+                ) 
+            },
             colors = navColors
         )
         NavigationBarItem(
             selected = currentScreen == "profile",
             onClick = { onScreenSelected("profile") },
-            icon = { Icon(if (currentScreen == "profile") Icons.Filled.Person else Icons.Outlined.Person, contentDescription = "Profile") },
-            label = { Text("Profile", fontSize = 10.sp) },
+            icon = { 
+                Box(contentAlignment = Alignment.Center) {
+                    if (currentScreen == "profile") {
+                        Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
+                    }
+                    Icon(if (currentScreen == "profile") Icons.Filled.Person else Icons.Outlined.Person, contentDescription = "Profile")
+                }
+            },
+            label = { 
+                Text(
+                    "Profile", 
+                    fontSize = 10.sp,
+                    style = if (currentScreen == "profile") TextStyle(
+                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
+                    ) else TextStyle.Default
+                ) 
+            },
             colors = navColors
         )
     }

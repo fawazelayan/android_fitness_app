@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +39,8 @@ import java.util.Locale
 @Composable
 fun NeonProgressDial(
     progress: Float,
-    valueText: String,
+    valueMain: String,
+    valueFraction: String,
     subText: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     neonColor: Color,
@@ -50,7 +52,7 @@ fun NeonProgressDial(
     
     BoxWithConstraints(
         modifier = modifier
-            .width(96.dp)
+            .width(110.dp)
             .aspectRatio(1f),
         contentAlignment = Alignment.Center
     ) {
@@ -101,18 +103,30 @@ fun NeonProgressDial(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(bottom = 6.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
         ) {
-            Text(
-                text = valueText,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = textColor
-            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = valueMain,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+                if (valueFraction.isNotEmpty()) {
+                    Text(
+                        text = valueFraction,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = labelColor,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = subText,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
                 color = labelColor
             )
         }
@@ -121,13 +135,13 @@ fun NeonProgressDial(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 2.dp)
+                .padding(bottom = 0.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = neonColor,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
     }
@@ -144,20 +158,26 @@ fun WelcomeHubLauncherCard(
     onClick: () -> Unit,
     testTag: String
 ) {
-    val cardBg = if (isDarkMode) Color(0xFF1D1714) else Color.White
-    val borderCol = if (isDarkMode) Color(0xFF332620) else Color(0xFFFFE6E1)
+    val borderCol = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.6f)
     val textTitleCol = if (isDarkMode) Color.White else Color(0xFF2E1A16)
     val textDescCol = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244)
+
+    val cardBgBrush = if (isDarkMode) {
+        Brush.verticalGradient(listOf(Color(0xFF2C2C30).copy(alpha = 0.5f), Color(0xFF1C1C1E).copy(alpha = 0.3f)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.6f), Color(0xFFF3F3F3).copy(alpha = 0.4f)))
+    }
 
     Card(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .testTag(testTag),
+            .testTag(testTag)
+            .background(cardBgBrush, RoundedCornerShape(20.dp)),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         border = BorderStroke(width = 1.dp, color = borderCol),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -234,7 +254,7 @@ fun WelcomeHubStatsOverview(
     totalCalories: Int,
     calorieGoal: Int
 ) {
-    val borderCol = if (isDarkMode) Color(0xFF332620) else Color(0xFFFFD1C5)
+    val borderCol = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.6f)
     val titleCol = if (isDarkMode) Color.White else Color(0xFF2E1A16)
     
     val totalScoops = totalCreatine + totalProtein
@@ -245,9 +265,9 @@ fun WelcomeHubStatsOverview(
     val caloriesProgress = if (calorieGoal > 0) totalCalories.toFloat() / calorieGoal.toFloat() else 0f
 
     val cardBgBrush = if (isDarkMode) {
-        Brush.verticalGradient(listOf(Color(0xFF231C19), Color(0xFF1D1714)))
+        Brush.verticalGradient(listOf(Color(0xFF2C2C30).copy(alpha = 0.5f), Color(0xFF1C1C1E).copy(alpha = 0.3f)))
     } else {
-        Brush.verticalGradient(listOf(Color(0xFFFFFDFD), Color(0xFFFFF6F4)))
+        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.6f), Color(0xFFF3F3F3).copy(alpha = 0.4f)))
     }
 
     Card(
@@ -263,39 +283,31 @@ fun WelcomeHubStatsOverview(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp)
+                .padding(vertical = 24.dp, horizontal = 12.dp)
         ) {
-            Text(
-                text = "Today's Quick Summary",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = titleCol
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Scoops Metric Column
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "SCOOPS",
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Normal,
                         color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
                         letterSpacing = 0.5.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     NeonProgressDial(
                         progress = scoopsProgress,
-                        valueText = "$totalScoops",
-                        subText = "/ $scoopsGoal Goal",
-                        icon = Icons.Filled.FitnessCenter,
+                        valueMain = "$totalScoops",
+                        valueFraction = "/$scoopsGoal",
+                        subText = "Goal",
+                        icon = Icons.Outlined.FitnessCenter,
                         neonColor = if (isDarkMode) Color(0xFFFF7A5C) else Color(0xFFD35400),
                         isDarkMode = isDarkMode
                     )
@@ -303,22 +315,22 @@ fun WelcomeHubStatsOverview(
 
                 // Hydration Metric Column
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "HYDRATION",
+                        text = "WATER HYDRATION",
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Normal,
                         color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
                         letterSpacing = 0.5.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     NeonProgressDial(
                         progress = waterProgress,
-                        valueText = String.format(Locale.US, "%.1fL", totalWaterMl / 1000f),
+                        valueMain = String.format(Locale.US, "%.1fL", totalWaterMl / 1000f),
+                        valueFraction = "",
                         subText = String.format(Locale.US, "/ %.1fL", waterGoalLtr),
-                        icon = Icons.Filled.Opacity,
+                        icon = Icons.Outlined.Opacity,
                         neonColor = Color(0xFF00E5FF),
                         isDarkMode = isDarkMode
                     )
@@ -326,22 +338,22 @@ fun WelcomeHubStatsOverview(
 
                 // Calories Metric Column
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "CALORIES",
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Normal,
                         color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
                         letterSpacing = 0.5.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     NeonProgressDial(
                         progress = caloriesProgress,
-                        valueText = String.format(Locale.US, "%,d", totalCalories),
+                        valueMain = String.format(Locale.US, "%,d", totalCalories),
+                        valueFraction = "",
                         subText = String.format(Locale.US, "/ %,d kcal", calorieGoal),
-                        icon = Icons.Filled.Whatshot,
+                        icon = Icons.Outlined.Whatshot,
                         neonColor = if (isDarkMode) Color(0xFF69F0AE) else Color(0xFF2E7D32),
                         isDarkMode = isDarkMode
                     )
