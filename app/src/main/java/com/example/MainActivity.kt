@@ -91,12 +91,13 @@ fun MainTrackerScreen(
             )
         }
     ) { innerPadding ->
+        val horizontalPadding = if (currentScreen == "water") 0.dp else 16.dp
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(themeBg)
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = horizontalPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
         if (currentScreen != "welcome" && currentScreen != "water") {
