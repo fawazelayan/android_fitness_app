@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -17,8 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -199,111 +206,87 @@ fun AppBottomNavigationBar(
     onScreenSelected: (String) -> Unit,
     isDarkMode: Boolean
 ) {
-    val containerColor = if (isDarkMode) Color(0xFF1D1714) else Color.White
-    val contentColor = if (isDarkMode) Color.White else Color(0xFF2E1A16)
-    val activeIconColor = if (isDarkMode) Color(0xFFFFB4A2) else Color(0xFFD84315)
+    val containerColor = if (isDarkMode) Color(0xFF121316) else Color.White
+    val activeIconColor = Color(0xFF00E5FF) // Neon Cyan
     val inactiveIconColor = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244)
 
-    NavigationBar(
-        containerColor = containerColor,
-        contentColor = contentColor,
-        tonalElevation = 8.dp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(containerColor)
     ) {
-        val navColors = NavigationBarItemDefaults.colors(
-            selectedIconColor = activeIconColor,
-            unselectedIconColor = inactiveIconColor,
-            selectedTextColor = activeIconColor,
-            unselectedTextColor = inactiveIconColor,
-            indicatorColor = Color.Transparent
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .height(76.dp), // Height matches standard navbar
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            
+            @Composable
+            fun NavItem(
+                id: String,
+                label: String,
+                activeIcon: androidx.compose.ui.graphics.vector.ImageVector,
+                inactiveIcon: androidx.compose.ui.graphics.vector.ImageVector
+            ) {
+                val isSelected = currentScreen == id
+                val color = if (isSelected) activeIconColor else inactiveIconColor
+                val interactionSource = remember { MutableInteractionSource() }
+                
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null, // Disable default material ripple/pill
+                            onClick = { onScreenSelected(id) }
+                        )
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    // Using a Box to perfectly superimpose the crisp icon over a shape-hugging blurred copy
+                    Box(contentAlignment = Alignment.Center) {
+                        if (isSelected) {
+                            // The path-conforming glow layer (the exact vector paths blurred)
+                            Icon(
+                                imageVector = activeIcon,
+                                contentDescription = null,
+                                tint = activeIconColor,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .alpha(0.35f) // Subtle, elegant aura
+                                    .blur(radius = 8.dp) // Tight shape-hugging blur
+                            )
+                        }
+                        
+                        // The crisp, sharp vector icon paths superimposed on top
+                        Icon(
+                            imageVector = if (isSelected) activeIcon else inactiveIcon,
+                            contentDescription = label,
+                            tint = color,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        color = color,
+                        style = if (isSelected) TextStyle(
+                            shadow = Shadow(color = activeIconColor.copy(alpha = 0.4f), blurRadius = 20f)
+                        ) else TextStyle.Default
+                    )
+                }
+            }
 
-        NavigationBarItem(
-            selected = currentScreen == "welcome",
-            onClick = { onScreenSelected("welcome") },
-            icon = { 
-                Box(contentAlignment = Alignment.Center) {
-                    if (currentScreen == "welcome") {
-                        Icon(Icons.Filled.Dashboard, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
-                    }
-                    Icon(if (currentScreen == "welcome") Icons.Filled.Dashboard else Icons.Outlined.Dashboard, contentDescription = "Dashboard")
-                }
-            },
-            label = { 
-                Text(
-                    "Dashboard", 
-                    fontSize = 10.sp,
-                    style = if (currentScreen == "welcome") TextStyle(
-                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
-                    ) else TextStyle.Default
-                ) 
-            },
-            colors = navColors
-        )
-        NavigationBarItem(
-            selected = currentScreen == "logs",
-            onClick = { onScreenSelected("logs") },
-            icon = { 
-                Box(contentAlignment = Alignment.Center) {
-                    if (currentScreen == "logs") {
-                        Icon(Icons.Filled.Article, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
-                    }
-                    Icon(if (currentScreen == "logs") Icons.Filled.Article else Icons.Outlined.Article, contentDescription = "Logs")
-                }
-            },
-            label = { 
-                Text(
-                    "Logs", 
-                    fontSize = 10.sp,
-                    style = if (currentScreen == "logs") TextStyle(
-                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
-                    ) else TextStyle.Default
-                ) 
-            },
-            colors = navColors
-        )
-        NavigationBarItem(
-            selected = currentScreen == "goals",
-            onClick = { onScreenSelected("goals") },
-            icon = { 
-                Box(contentAlignment = Alignment.Center) {
-                    if (currentScreen == "goals") {
-                        Icon(Icons.Filled.TrackChanges, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
-                    }
-                    Icon(if (currentScreen == "goals") Icons.Filled.TrackChanges else Icons.Outlined.TrackChanges, contentDescription = "Goals")
-                }
-            },
-            label = { 
-                Text(
-                    "Goals", 
-                    fontSize = 10.sp,
-                    style = if (currentScreen == "goals") TextStyle(
-                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
-                    ) else TextStyle.Default
-                ) 
-            },
-            colors = navColors
-        )
-        NavigationBarItem(
-            selected = currentScreen == "profile",
-            onClick = { onScreenSelected("profile") },
-            icon = { 
-                Box(contentAlignment = Alignment.Center) {
-                    if (currentScreen == "profile") {
-                        Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.blur(8.dp).alpha(0.7f))
-                    }
-                    Icon(if (currentScreen == "profile") Icons.Filled.Person else Icons.Outlined.Person, contentDescription = "Profile")
-                }
-            },
-            label = { 
-                Text(
-                    "Profile", 
-                    fontSize = 10.sp,
-                    style = if (currentScreen == "profile") TextStyle(
-                        shadow = Shadow(color = activeIconColor, blurRadius = 15f)
-                    ) else TextStyle.Default
-                ) 
-            },
-            colors = navColors
-        )
+            NavItem("welcome", "Dashboard", Icons.Filled.Dashboard, Icons.Outlined.Dashboard)
+            NavItem("logs", "Logs", Icons.Filled.Article, Icons.Outlined.Article)
+            NavItem("goals", "Goals", Icons.Filled.TrackChanges, Icons.Outlined.TrackChanges)
+            NavItem("profile", "Profile", Icons.Filled.Person, Icons.Outlined.Person)
+        }
     }
 }
