@@ -73,7 +73,7 @@ fun NeonProgressDial(
             )
             
             // 2. Draw active neon progress arc with Glow Effect
-            if (sweepAngle > 0f) {
+            if (sweepAngle > 0f && isDarkMode) {
                 drawIntoCanvas { canvas ->
                     val paint = android.graphics.Paint().apply {
                         color = neonColor.toArgb()
@@ -165,7 +165,7 @@ fun WelcomeHubLauncherCard(
     val cardBgBrush = if (isDarkMode) {
         Brush.verticalGradient(listOf(Color(0xFF2C2C30).copy(alpha = 0.5f), Color(0xFF1C1C1E).copy(alpha = 0.3f)))
     } else {
-        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.6f), Color(0xFFF3F3F3).copy(alpha = 0.4f)))
+        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.8f), Color(0xFFF3F3F3).copy(alpha = 0.6f)))
     }
 
     Card(
@@ -219,14 +219,14 @@ fun WelcomeHubLauncherCard(
                 Spacer(modifier = Modifier.height(6.dp))
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = accentColor.copy(alpha = 0.08f),
+                    color = if (isDarkMode) accentColor.copy(alpha = 0.08f) else accentColor.copy(alpha = 0.25f),
                     border = BorderStroke(0.5.dp, accentColor.copy(alpha = 0.2f))
                 ) {
                     Text(
                         text = statusInfo,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        color = accentColor,
+                        color = if (isDarkMode) accentColor else Color(0xFF000000),
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -267,7 +267,7 @@ fun WelcomeHubStatsOverview(
     val cardBgBrush = if (isDarkMode) {
         Brush.verticalGradient(listOf(Color(0xFF2C2C30).copy(alpha = 0.5f), Color(0xFF1C1C1E).copy(alpha = 0.3f)))
     } else {
-        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.6f), Color(0xFFF3F3F3).copy(alpha = 0.4f)))
+        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.8f), Color(0xFFF3F3F3).copy(alpha = 0.6f)))
     }
 
     Card(
@@ -318,7 +318,7 @@ fun WelcomeHubStatsOverview(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "WATER HYDRATION",
+                        text = "HYDRATION",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Normal,
                         color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
@@ -354,7 +354,7 @@ fun WelcomeHubStatsOverview(
                         valueFraction = "",
                         subText = String.format(Locale.US, "/ %,d kcal", calorieGoal),
                         icon = Icons.Outlined.Whatshot,
-                        neonColor = if (isDarkMode) Color(0xFF69F0AE) else Color(0xFF2E7D32),
+                        neonColor = Color(0xFF21D021),
                         isDarkMode = isDarkMode
                     )
                 }
@@ -601,7 +601,7 @@ fun WelcomeScreen(
                 title = "Nutrition",
                 description = "Log meals & view macros",
                 icon = Icons.Filled.Restaurant,
-                accentColor = if (isDarkMode) Color(0xFF69F0AE) else Color(0xFF2E7D32),
+                accentColor = Color(0xFF21D021),
                 isDarkMode = isDarkMode,
                 statusInfo = "Calories Target: ${calorieGoal.toInt()} kcal • Logged: ${totalCalories} kcal",
                 onClick = { onScreenChange("nutrition") },

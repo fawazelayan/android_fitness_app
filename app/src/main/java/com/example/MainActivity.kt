@@ -79,7 +79,7 @@ fun MainTrackerScreen(
 
     var currentScreen by remember { mutableStateOf("welcome") }
 
-    val themeBg = if (isDarkMode) Color(0xFF140F0D) else Color(0xFFFDF8F6)
+    val themeBg = if (isDarkMode) Color(0xFF140F0D) else Color(0xFFF4F6F8)
     val ThemeTextTitle = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF201A19)
     val ThemeTextSubtitle = if (isDarkMode) Color(0xFF74797A) else Color(0xFF74797A)
     
@@ -206,9 +206,9 @@ fun AppBottomNavigationBar(
     onScreenSelected: (String) -> Unit,
     isDarkMode: Boolean
 ) {
-    val containerColor = if (isDarkMode) Color(0xFF121316) else Color.White
+    val containerColor = if (isDarkMode) Color(0xFF121316) else Color(0xFFF4F6F8)
     val activeIconColor = Color(0xFF00E5FF) // Neon Cyan
-    val inactiveIconColor = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244)
+    val inactiveIconColor = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF212121)
 
     Box(
         modifier = Modifier
@@ -250,16 +250,18 @@ fun AppBottomNavigationBar(
                     // Using a Box to perfectly superimpose the crisp icon over a shape-hugging blurred copy
                     Box(contentAlignment = Alignment.Center) {
                         if (isSelected) {
-                            // The path-conforming glow layer (the exact vector paths blurred)
-                            Icon(
-                                imageVector = activeIcon,
-                                contentDescription = null,
-                                tint = activeIconColor,
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .alpha(0.35f) // Subtle, elegant aura
-                                    .blur(radius = 8.dp) // Tight shape-hugging blur
-                            )
+                            if (isDarkMode) {
+                                // The path-conforming glow layer (the exact vector paths blurred)
+                                Icon(
+                                    imageVector = activeIcon,
+                                    contentDescription = null,
+                                    tint = activeIconColor,
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .alpha(0.35f) // Subtle, elegant aura
+                                        .blur(radius = 8.dp) // Tight shape-hugging blur
+                                )
+                            }
                         }
                         
                         // The crisp, sharp vector icon paths superimposed on top
@@ -272,11 +274,18 @@ fun AppBottomNavigationBar(
                     }
                     
                     Spacer(modifier = Modifier.height(4.dp))
+                    val labelColor = if (isDarkMode) {
+                        if (isSelected) activeIconColor else inactiveIconColor
+                    } else {
+                        Color(0xFF212121) // All label text is black in light mode
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = label,
                         fontSize = 11.sp,
-                        color = color,
-                        style = if (isSelected) TextStyle(
+                        color = labelColor,
+                        style = if (isSelected && isDarkMode) TextStyle(
                             shadow = Shadow(color = activeIconColor.copy(alpha = 0.4f), blurRadius = 20f)
                         ) else TextStyle.Default
                     )
