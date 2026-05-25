@@ -48,7 +48,9 @@ fun NeonProgressDial(
     percentageText: String,
     neonColor: Color,
     isDarkMode: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
+    indicators: (@Composable () -> Unit)? = null
 ) {
     val textColor = if (isDarkMode) Color.White else Color.Black
     val labelColor = Color.Gray
@@ -108,7 +110,13 @@ fun NeonProgressDial(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.padding(12.dp)
         ) {
-            Spacer(modifier = Modifier.height(10.dp))
+            if (icon != null) {
+                icon()
+                Spacer(modifier = Modifier.height(4.dp))
+            } else {
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            
             if (fractionOnSameLine) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -129,12 +137,15 @@ fun NeonProgressDial(
                     )
                 }
             } else {
+                val isAction = valueMain.startsWith("Add")
                 Text(
                     text = valueMain,
-                    fontSize = 22.sp,
+                    fontSize = if (isAction) 15.sp else 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = textColor
+                    color = textColor,
+                    maxLines = 1
                 )
+                Spacer(modifier = Modifier.height(if (isAction) 1.dp else 4.dp))
                 Text(
                     text = valueFraction,
                     fontSize = 11.sp,
@@ -142,13 +153,21 @@ fun NeonProgressDial(
                     color = labelColor
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = percentageText,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = neonColor
-            )
+            
+            if (indicators != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                indicators()
+            }
+            
+            if (percentageText.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = percentageText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = neonColor
+                )
+            }
         }
     }
 }
@@ -232,23 +251,25 @@ fun WelcomeHubLauncherCard(
 @Composable
 fun WelcomeHubStatsOverview(
     isDarkMode: Boolean,
-    totalCreatine: Int,
-    totalProtein: Int,
-    maxCreatine: Int,
-    maxProtein: Int,
+    supplements: List<com.example.data.Supplement>,
+    supplementLogsToday: List<com.example.data.SupplementLog>,
     totalWaterMl: Int,
     waterGoalLtr: Double,
     totalCalories: Int,
-    calorieGoal: Int
+    calorieGoal: Int,
+    onScoopsDialClick: () -> Unit = {},
+    onHydrationDialClick: () -> Unit = {},
+    onCaloriesDialClick: () -> Unit = {}
 ) {
-    val totalScoops = totalCreatine + totalProtein
-    val scoopsGoal = maxCreatine + maxProtein
+    val totalActiveSupplements = supplements.size
+    val loggedSupplementIds = supplementLogsToday.map { it.supplementId }.toSet()
+    val numberLoggedToday = supplements.count { it.id in loggedSupplementIds }
     
-    val scoopsProgress = if (scoopsGoal > 0) totalScoops.toFloat() / scoopsGoal.toFloat() else 0f
+    val scoopsProgress = if (totalActiveSupplements > 0) numberLoggedToday.toFloat() / totalActiveSupplements.toFloat() else 0f
     val waterProgress = if (waterGoalLtr > 0) (totalWaterMl / 1000f) / waterGoalLtr.toFloat() else 0f
     val caloriesProgress = if (calorieGoal > 0) totalCalories.toFloat() / calorieGoal.toFloat() else 0f
 
-    val scoopsPct = if (scoopsGoal > 0) (totalScoops * 100) / scoopsGoal else 0
+    val scoopsPct = if (totalActiveSupplements > 0) (numberLoggedToday * 100) / totalActiveSupplements else 0
     val waterPct = if (waterGoalLtr > 0) ((totalWaterMl / 1000f) / waterGoalLtr.toFloat() * 100).toInt() else 0
     val caloriesPct = if (calorieGoal > 0) (totalCalories * 100) / calorieGoal else 0
 
@@ -270,13 +291,15 @@ fun WelcomeHubStatsOverview(
             // Scoops Metric Column
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onScoopsDialClick() }
             ) {
                 val headerShadow = if (isDarkMode) {
                     Shadow(color = scoopsColor.copy(alpha = 0.6f), blurRadius = 12f)
                 } else null
                 Text(
-                    text = "SCOOPS",
+                    text = "TUBS",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isDarkMode) scoopsColor else Color(0xFF0B0B0C),
@@ -286,19 +309,68 @@ fun WelcomeHubStatsOverview(
                 Spacer(modifier = Modifier.height(12.dp))
                 NeonProgressDial(
                     progress = scoopsProgress,
-                    valueMain = "$totalScoops",
-                    valueFraction = "/ $scoopsGoal",
-                    fractionOnSameLine = true,
-                    percentageText = "$scoopsPct%",
+                    valueMain = if (totalActiveSupplements > 0) "$numberLoggedToday" else "Add Tub",
+                    valueFraction = if (totalActiveSupplements > 0) "/ $totalActiveSupplements" else "tap to start",
+                    fractionOnSameLine = totalActiveSupplements > 0,
+                    percentageText = "",
                     neonColor = scoopsColor,
-                    isDarkMode = isDarkMode
+                    isDarkMode = isDarkMode,
+                    icon = if (totalActiveSupplements == 0) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Medication,
+                                contentDescription = null,
+                                tint = scoopsColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    } else null,
+                    indicators = if (totalActiveSupplements > 0) {
+                        {
+                            val maxDots = 5
+                            val displaySupps = supplements.take(maxDots)
+                            val remainingCount = supplements.size - maxDots
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                displaySupps.forEach { supp ->
+                                    val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.Gray }
+                                    val isLogged = supplementLogsToday.any { it.supplementId == supp.id }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(
+                                                color = if (isLogged) color else color.copy(alpha = 0.2f),
+                                                shape = CircleShape
+                                            )
+                                            .border(
+                                                width = 0.5.dp,
+                                                color = if (isLogged) Color.Transparent else color.copy(alpha = 0.5f),
+                                                shape = CircleShape
+                                            )
+                                    )
+                                }
+                                if (remainingCount > 0) {
+                                    Text(
+                                        text = "+$remainingCount",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkMode) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    } else null
                 )
             }
 
             // Hydration Metric Column
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onHydrationDialClick() }
             ) {
                 val headerShadow = if (isDarkMode) {
                     Shadow(color = waterColor.copy(alpha = 0.6f), blurRadius = 12f)
@@ -314,19 +386,31 @@ fun WelcomeHubStatsOverview(
                 Spacer(modifier = Modifier.height(12.dp))
                 NeonProgressDial(
                     progress = waterProgress,
-                    valueMain = String.format(Locale.US, "%.1fL", totalWaterMl / 1000f),
-                    valueFraction = String.format(Locale.US, "/ %.1fL", waterGoalLtr),
+                    valueMain = if (totalWaterMl == 0) "Add Water" else String.format(Locale.US, "%.1fL", totalWaterMl / 1000f),
+                    valueFraction = if (totalWaterMl == 0) "tap to start" else String.format(Locale.US, "/ %.1fL", waterGoalLtr),
                     fractionOnSameLine = false,
-                    percentageText = "$waterPct%",
+                    percentageText = if (totalWaterMl == 0) "" else "$waterPct%",
                     neonColor = waterColor,
-                    isDarkMode = isDarkMode
+                    isDarkMode = isDarkMode,
+                    icon = if (totalWaterMl == 0) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Opacity,
+                                contentDescription = null,
+                                tint = waterColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    } else null
                 )
             }
 
             // Calories Metric Column
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onCaloriesDialClick() }
             ) {
                 val headerShadow = if (isDarkMode) {
                     Shadow(color = caloriesColor.copy(alpha = 0.6f), blurRadius = 12f)
@@ -342,12 +426,22 @@ fun WelcomeHubStatsOverview(
                 Spacer(modifier = Modifier.height(12.dp))
                 NeonProgressDial(
                     progress = caloriesProgress,
-                    valueMain = String.format(Locale.US, "%,d", totalCalories),
-                    valueFraction = String.format(Locale.US, "kcal / %,d", calorieGoal),
+                    valueMain = if (totalCalories == 0) "Add Food" else String.format(Locale.US, "%,d", totalCalories),
+                    valueFraction = if (totalCalories == 0) "tap to start" else String.format(Locale.US, "kcal / %,d", calorieGoal),
                     fractionOnSameLine = false,
-                    percentageText = "$caloriesPct%",
+                    percentageText = if (totalCalories == 0) "" else "$caloriesPct%",
                     neonColor = caloriesColor,
-                    isDarkMode = isDarkMode
+                    isDarkMode = isDarkMode,
+                    icon = if (totalCalories == 0) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Restaurant,
+                                contentDescription = null,
+                                tint = caloriesColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    } else null
                 )
             }
         }
@@ -410,9 +504,6 @@ fun WelcomeScreen(
 ) {
     val context = LocalContext.current
     
-    val maxCreatine by viewModel.creatineMax.collectAsStateWithLifecycle()
-    val maxProtein by viewModel.proteinMax.collectAsStateWithLifecycle()
-    
     val waterGoal by viewModel.waterGoal.collectAsStateWithLifecycle()
     val waterRemindersEnabled by viewModel.waterRemindersEnabled.collectAsStateWithLifecycle()
     
@@ -422,14 +513,13 @@ fun WelcomeScreen(
     }
     val calorieGoal by viewModel.calorieGoal.collectAsStateWithLifecycle()
     
-    val todayIntake by viewModel.todayIntake.collectAsStateWithLifecycle()
-    val todayCreatine = todayIntake?.creatineCount ?: 0
-    val todayProtein = todayIntake?.proteinCount ?: 0
-    
     val waterLogsTodayRaw by viewModel.waterLogsToday.collectAsStateWithLifecycle()
     val totalWaterMl = remember(waterLogsTodayRaw) {
         waterLogsTodayRaw.sumOf { it.amountMl }
     }
+
+    val supplements by viewModel.supplements.collectAsStateWithLifecycle()
+    val supplementLogsToday by viewModel.supplementLogsToday.collectAsStateWithLifecycle()
 
     val activeProfileName = if (activeProfile == "profile_1") profile1Name else profile2Name
     
@@ -542,65 +632,16 @@ fun WelcomeScreen(
         // Stats summary circular dial panel
         WelcomeHubStatsOverview(
             isDarkMode = isDarkMode,
-            totalCreatine = todayCreatine,
-            totalProtein = todayProtein,
-            maxCreatine = maxCreatine,
-            maxProtein = maxProtein,
+            supplements = supplements,
+            supplementLogsToday = supplementLogsToday,
             totalWaterMl = totalWaterMl,
             waterGoalLtr = waterGoal,
             totalCalories = totalCalories,
-            calorieGoal = calorieGoal.toInt()
+            calorieGoal = calorieGoal.toInt(),
+            onScoopsDialClick = { onScreenChange("scoops") },
+            onHydrationDialClick = { onScreenChange("water") },
+            onCaloriesDialClick = { onScreenChange("nutrition") }
         )
-
-        // Launchers Section
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = "QUICK ACCESS",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
-                letterSpacing = 0.5.sp,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                WelcomeHubLauncherCard(
-                    title = "Scoop Tracker",
-                    icon = Icons.Filled.FitnessCenter,
-                    accentColor = if (isDarkMode) Color(0xFFFF7A5C) else Color(0xFFD35400),
-                    isDarkMode = isDarkMode,
-                    onClick = { onScreenChange("scoops") },
-                    modifier = Modifier.weight(1f),
-                    testTag = "goto_scoops"
-                )
-
-                WelcomeHubLauncherCard(
-                    title = "Water Intake",
-                    icon = Icons.Filled.Opacity,
-                    accentColor = Color(0xFF00E5FF),
-                    isDarkMode = isDarkMode,
-                    onClick = { onScreenChange("water") },
-                    modifier = Modifier.weight(1f),
-                    testTag = "goto_water"
-                )
-
-                WelcomeHubLauncherCard(
-                    title = "Nutrition",
-                    icon = Icons.Filled.Restaurant,
-                    accentColor = Color(0xFF21D021),
-                    isDarkMode = isDarkMode,
-                    onClick = { onScreenChange("nutrition") },
-                    modifier = Modifier.weight(1f),
-                    testTag = "goto_nutrition"
-                )
-            }
-        }
 
 
     }

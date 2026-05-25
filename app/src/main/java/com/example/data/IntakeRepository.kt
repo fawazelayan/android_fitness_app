@@ -7,7 +7,10 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-class IntakeRepository(private val dao: IntakeDao) {
+class IntakeRepository(
+    private val dao: IntakeDao,
+    private val supplementDao: SupplementDao
+) {
 
     val allIntakes: Flow<List<DailyIntake>> = dao.getAllIntakes()
 
@@ -104,6 +107,8 @@ class IntakeRepository(private val dao: IntakeDao) {
         dao.deleteAllIntakes()
         dao.deleteAllWaterLogs()
         dao.deleteAllFoodLogs()
+        supplementDao.deleteAllSupplements()
+        supplementDao.deleteAllSupplementLogs()
     }
 
     // Water Log Operations
@@ -130,5 +135,57 @@ class IntakeRepository(private val dao: IntakeDao) {
 
     suspend fun deleteFoodLog(id: Int) {
         dao.deleteFoodLog(id)
+    }
+
+    // Supplement Operations
+    fun getAllSupplements(profileId: String): Flow<List<Supplement>> {
+        return supplementDao.getAllSupplements(profileId)
+    }
+
+    suspend fun getSupplementById(id: Int): Supplement? {
+        return supplementDao.getSupplementById(id)
+    }
+
+    suspend fun insertSupplement(supplement: Supplement) {
+        supplementDao.insertSupplement(supplement)
+    }
+
+    suspend fun updateSupplement(supplement: Supplement) {
+        supplementDao.updateSupplement(supplement)
+    }
+
+    suspend fun deleteSupplement(id: Int) {
+        supplementDao.deleteLogsForSupplement(id)
+        supplementDao.deleteSupplementById(id)
+    }
+
+    // Supplement Log Operations
+    fun getSupplementLogsForDate(profileId: String, date: String): Flow<List<SupplementLog>> {
+        return supplementDao.getLogsForDate(profileId, date)
+    }
+
+    fun getAllSupplementLogs(profileId: String): Flow<List<SupplementLog>> {
+        return supplementDao.getAllLogs(profileId)
+    }
+
+    suspend fun getLogsForSupplementOnDate(profileId: String, supplementId: Int, date: String): List<SupplementLog> {
+        return supplementDao.getLogsForSupplementOnDate(profileId, supplementId, date)
+    }
+
+    suspend fun insertSupplementLog(log: SupplementLog) {
+        supplementDao.insertLog(log)
+    }
+
+    suspend fun deleteSupplementLogById(id: Int) {
+        supplementDao.deleteLogById(id)
+    }
+
+    suspend fun deleteLogsForSupplementOnDate(supplementId: Int, date: String) {
+        supplementDao.deleteLogsForSupplementOnDate(supplementId, date)
+    }
+
+    suspend fun clearAllSupplementHistory() {
+        supplementDao.deleteAllSupplements()
+        supplementDao.deleteAllSupplementLogs()
     }
 }

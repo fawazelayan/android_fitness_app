@@ -81,7 +81,7 @@ fun HeaderSection(
                     text = when (currentScreen) {
                         "water" -> "Hydration"
                         "nutrition" -> "Nutrition"
-                        "scoops" -> "Daily Scoop"
+                        "scoops" -> "Tub Tracker"
                         else -> "FitFlow Hub"
                     },
                     color = textColorTitle,

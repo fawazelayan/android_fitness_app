@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 class IntakeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
-    private val repository = IntakeRepository(db.intakeDao)
+    private val repository = IntakeRepository(db.intakeDao, db.supplementDao)
 
     private val _activeProfile = MutableStateFlow("profile_1")
     val activeProfile: StateFlow<String> = _activeProfile.asStateFlow()
@@ -57,6 +57,16 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _isDarkMode = MutableStateFlow(false)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+
+    // Dynamic Supplement Tracker States
+    private val _supplements = MutableStateFlow<List<com.example.data.Supplement>>(emptyList())
+    val supplements: StateFlow<List<com.example.data.Supplement>> = _supplements.asStateFlow()
+
+    private val _supplementLogsToday = MutableStateFlow<List<com.example.data.SupplementLog>>(emptyList())
+    val supplementLogsToday: StateFlow<List<com.example.data.SupplementLog>> = _supplementLogsToday.asStateFlow()
+
+    private val _allSupplementLogs = MutableStateFlow<List<com.example.data.SupplementLog>>(emptyList())
+    val allSupplementLogs: StateFlow<List<com.example.data.SupplementLog>> = _allSupplementLogs.asStateFlow()
 
     // Water Intake Tracking States
     private val _waterLogsToday = MutableStateFlow<List<WaterLog>>(emptyList())
@@ -245,6 +255,46 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
                             } else {
                                 _todayIntake.value = entry
                             }
+                        }
+                    }
+                }
+            }
+
+            // Collect supplements for the active profile
+            var supplementsJob: kotlinx.coroutines.Job? = null
+            launch {
+                _activeProfile.collect { profile ->
+                    supplementsJob?.cancel()
+                    supplementsJob = launch {
+                        repository.getAllSupplements(profile).collect { list ->
+                            _supplements.value = list
+                        }
+                    }
+                }
+            }
+
+            // Collect today's supplement logs for the active profile
+            var supplementLogsTodayJob: kotlinx.coroutines.Job? = null
+            launch {
+                _activeProfile.collect { profile ->
+                    supplementLogsTodayJob?.cancel()
+                    supplementLogsTodayJob = launch {
+                        val todayStr = repository.getTodayDateString()
+                        repository.getSupplementLogsForDate(profile, todayStr).collect { logs ->
+                            _supplementLogsToday.value = logs
+                        }
+                    }
+                }
+            }
+
+            // Collect all historical logs for supplement calendars
+            var allSupplementLogsJob: kotlinx.coroutines.Job? = null
+            launch {
+                _activeProfile.collect { profile ->
+                    allSupplementLogsJob?.cancel()
+                    allSupplementLogsJob = launch {
+                        repository.getAllSupplementLogs(profile).collect { logs ->
+                            _allSupplementLogs.value = logs
                         }
                     }
                 }
@@ -798,5 +848,103 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
             _isAnalyzingLabel.value = false
         }
     }
+
+    // Supplement Operations
+    fun addSupplement(
+        name: String,
+        type: String,
+        servingUnit: String,
+        totalStock: Int,
+        dailyTarget: Int,
+        colorTag: String
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val profile = _activeProfile.value
+            val newSupplement = com.example.data.Supplement(
+                profileId = profile,
+                name = name,
+                type = type,
+                servingUnit = servingUnit,
+                totalStock = totalStock,
+                remainingStock = totalStock,
+                dailyTarget = dailyTarget,
+                colorTag = colorTag
+            )
+            repository.insertSupplement(newSupplement)
+        }
+    }
+
+    fun deleteSupplement(id: Int) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            repository.deleteSupplement(id)
+        }
+    }
+
+    fun logServingToday(supplement: com.example.data.Supplement) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val todayStr = repository.getTodayDateString()
+            val profile = _activeProfile.value
+
+            if (supplement.remainingStock > 0) {
+                // Decrement stock
+                val updatedSupplement = supplement.copy(remainingStock = supplement.remainingStock - 1)
+                repository.updateSupplement(updatedSupplement)
+
+                // Insert Log
+                val newLog = com.example.data.SupplementLog(
+                    supplementId = supplement.id,
+                    profileId = profile,
+                    date = todayStr,
+                    amount = 1
+                )
+                repository.insertSupplementLog(newLog)
+            }
+        }
+    }
+
+    fun removeServingToday(supplement: com.example.data.Supplement) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val todayStr = repository.getTodayDateString()
+            val profile = _activeProfile.value
+
+            val existingLogs = repository.getLogsForSupplementOnDate(profile, supplement.id, todayStr)
+            if (existingLogs.isNotEmpty()) {
+                repository.deleteSupplementLogById(existingLogs.first().id)
+                val updatedSupplement = supplement.copy(remainingStock = supplement.remainingStock + 1)
+                repository.updateSupplement(updatedSupplement)
+            }
+        }
+    }
+
+    fun logServingOnDate(supplement: com.example.data.Supplement, date: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val profile = _activeProfile.value
+            if (supplement.remainingStock > 0) {
+                val updatedSupplement = supplement.copy(remainingStock = supplement.remainingStock - 1)
+                repository.updateSupplement(updatedSupplement)
+
+                val newLog = com.example.data.SupplementLog(
+                    supplementId = supplement.id,
+                    profileId = profile,
+                    date = date,
+                    amount = 1
+                )
+                repository.insertSupplementLog(newLog)
+            }
+        }
+    }
+
+    fun removeServingOnDate(supplement: com.example.data.Supplement, date: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val profile = _activeProfile.value
+            val existingLogs = repository.getLogsForSupplementOnDate(profile, supplement.id, date)
+            if (existingLogs.isNotEmpty()) {
+                repository.deleteSupplementLogById(existingLogs.first().id)
+                val updatedSupplement = supplement.copy(remainingStock = supplement.remainingStock + 1)
+                repository.updateSupplement(updatedSupplement)
+            }
+        }
+    }
 }
+
 

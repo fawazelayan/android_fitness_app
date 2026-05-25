@@ -26,7 +26,7 @@ class ReminderReceiver : BroadcastReceiver() {
         if (action == Intent.ACTION_BOOT_COMPLETED) {
             // Re-schedule alarm if it was configured as enabled in DB
             val db = AppDatabase.getDatabase(context)
-            val repo = IntakeRepository(db.intakeDao)
+            val repo = IntakeRepository(db.intakeDao, db.supplementDao)
             CoroutineScope(Dispatchers.IO).launch {
                 val enabled = repo.getSettingBoolean(IntakeRepository.KEY_REMINDERS_ENABLED, false)
                 if (enabled) {
@@ -49,7 +49,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
             // Reschedule water alarm for next day
             val db = AppDatabase.getDatabase(context)
-            val repo = IntakeRepository(db.intakeDao)
+            val repo = IntakeRepository(db.intakeDao, db.supplementDao)
             CoroutineScope(Dispatchers.IO).launch {
                 val enabled = repo.getSettingBoolean(IntakeRepository.KEY_WATER_REMINDERS_ENABLED, false)
                 if (enabled) {
@@ -66,7 +66,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
         // Reschedule for the next day to maintain the exact daily reminders chain
         val db = AppDatabase.getDatabase(context)
-        val repo = IntakeRepository(db.intakeDao)
+        val repo = IntakeRepository(db.intakeDao, db.supplementDao)
         CoroutineScope(Dispatchers.IO).launch {
             val enabled = repo.getSettingBoolean(IntakeRepository.KEY_REMINDERS_ENABLED, false)
             if (enabled) {
@@ -138,7 +138,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 "Intake Reminders",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Daily reminders to record your creatine and protein intakes"
+                description = "Daily reminders to record your supplement intakes"
                 setSound(ringerUri, AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -162,8 +162,8 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("Track Your Daily Scoops! 💪")
-            .setContentText("Stay on track with your goals! Remember to log your creatine and protein scoop count today.")
+            .setContentTitle("Track Your Daily Supplements! 💪")
+            .setContentText("Stay on track with your goals! Remember to log your supplement servings today.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setSound(ringerUri)
             .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)

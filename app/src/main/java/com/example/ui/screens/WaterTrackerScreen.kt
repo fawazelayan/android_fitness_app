@@ -52,7 +52,7 @@ fun WaterTrackerScreen(
     val goalMl = remember(waterGoal) { (waterGoal * 1000).toInt() }
     val progress = remember(totalLoggedMl, goalMl) { if (goalMl > 0) (totalLoggedMl.toFloat() / goalMl.toFloat()).coerceIn(0f, 1f) else 0f }
 
-    val themeBg = Color(0xFF121316)
+    val themeBg = if (isDarkMode) Color(0xFF121316) else Color(0xFFF4F6F8)
 
     Column(
         modifier = modifier
@@ -70,7 +70,7 @@ fun WaterTrackerScreen(
         ) {
             Text(
                 text = "DAILY WATER TRACKER",
-                color = Color.White,
+                color = if (isDarkMode) Color.White else Color(0xFF0B0B0C),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp
@@ -97,7 +97,7 @@ fun WaterTrackerScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         // THE GLASS (Centerpiece)
-        TranslucentWaterGlass(progress = progress, totalLoggedMl = totalLoggedMl, goalMl = goalMl)
+        TranslucentWaterGlass(progress = progress, totalLoggedMl = totalLoggedMl, goalMl = goalMl, isDarkMode = isDarkMode)
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -123,8 +123,8 @@ fun WaterTrackerScreen(
                         unfocusedBorderColor = Color(0xFF00E5FF).copy(alpha = 0.5f),
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        focusedTextColor = if (isDarkMode) Color.White else Color.Black,
+                        unfocusedTextColor = if (isDarkMode) Color.White else Color.Black
                     ),
                     singleLine = true,
                     modifier = Modifier.weight(1f).height(50.dp)
@@ -198,7 +198,7 @@ fun WaterTrackerScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF232325))
+                colors = CardDefaults.cardColors(containerColor = if (isDarkMode) Color(0xFF232325) else Color(0xFFFFFFFF))
             ) {
                 val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
                 if (waterLogsToday.list.isEmpty()) {
@@ -231,7 +231,7 @@ fun WaterTrackerScreen(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Text(
                                     text = "${log.amountMl}ml",
-                                    color = Color.White,
+                                    color = if (isDarkMode) Color.White else Color.Black,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Normal
                                 )
@@ -255,12 +255,12 @@ fun WaterTrackerScreen(
                                 }
                             }
                             if (index < itemsToShow.size - 1) {
-                                Divider(color = Color.White.copy(alpha = 0.05f), modifier = Modifier.padding(horizontal = 16.dp))
+                                Divider(color = if (isDarkMode) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.08f), modifier = Modifier.padding(horizontal = 16.dp))
                             }
                         }
 
                         if (waterLogsToday.list.size > 5) {
-                            Divider(color = Color.White.copy(alpha = 0.05f), modifier = Modifier.padding(horizontal = 16.dp))
+                            Divider(color = if (isDarkMode) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.08f), modifier = Modifier.padding(horizontal = 16.dp))
                             val arrowRotation by animateFloatAsState(targetValue = if (isExpanded) 180f else 0f)
                             Box(
                                 modifier = Modifier
@@ -287,7 +287,7 @@ fun WaterTrackerScreen(
 }
 
 @Composable
-fun TranslucentWaterGlass(progress: Float, totalLoggedMl: Int, goalMl: Int) {
+fun TranslucentWaterGlass(progress: Float, totalLoggedMl: Int, goalMl: Int, isDarkMode: Boolean) {
     Box(
         modifier = Modifier
             .width(220.dp)
@@ -329,8 +329,8 @@ fun TranslucentWaterGlass(progress: Float, totalLoggedMl: Int, goalMl: Int) {
                 path = glassPath,
                 brush = Brush.linearGradient(
                     listOf(
-                        Color.White.copy(alpha = 0.08f),
-                        Color.White.copy(alpha = 0.03f)
+                        if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.03f),
+                        if (isDarkMode) Color.White.copy(alpha = 0.03f) else Color.Black.copy(alpha = 0.01f)
                     )
                 )
             )
@@ -378,8 +378,8 @@ fun TranslucentWaterGlass(progress: Float, totalLoggedMl: Int, goalMl: Int) {
                 path = glassPath,
                 brush = Brush.verticalGradient(
                     listOf(
-                        Color.White.copy(alpha = 0.4f),
-                        Color.White.copy(alpha = 0.1f)
+                        if (isDarkMode) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.2f),
+                        if (isDarkMode) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f)
                     )
                 ),
                 style = Stroke(width = 2.dp.toPx())
@@ -392,7 +392,7 @@ fun TranslucentWaterGlass(progress: Float, totalLoggedMl: Int, goalMl: Int) {
             }
             drawPath(
                 path = leftReflectionPath,
-                color = Color.White.copy(alpha = 0.15f),
+                color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f),
                 style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
             )
         }
@@ -405,7 +405,7 @@ fun TranslucentWaterGlass(progress: Float, totalLoggedMl: Int, goalMl: Int) {
         ) {
             Text(
                 text = "TODAY'S PROGRESS",
-                color = Color.White.copy(alpha = 0.7f),
+                color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.7f),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 1.sp
@@ -416,14 +416,14 @@ fun TranslucentWaterGlass(progress: Float, totalLoggedMl: Int, goalMl: Int) {
             
             Text(
                 text = "${litersLogged}L",
-                color = Color.White,
+                color = if (isDarkMode) Color.White else Color.Black,
                 fontSize = 54.sp,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "/ ${litersGoal}L Goal",
-                color = Color.White.copy(alpha = 0.9f),
+                color = if (isDarkMode) Color.White.copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.8f),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Normal
             )

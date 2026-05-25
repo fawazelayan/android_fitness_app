@@ -23,8 +23,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.LocalActivity
+import androidx.compose.material.icons.filled.Medication
 import com.example.ui.components.NavButton
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -80,8 +80,8 @@ fun NutritionScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             NavButton(
-                text = "Daily Scoops",
-                icon = Icons.Filled.FitnessCenter,
+                text = "Tub Tracker",
+                icon = Icons.Default.Medication,
                 isDark = isDarkMode,
                 activeColor = if (isDarkMode) Color(0xFFFFB4A2) else Color(0xFF9C432F),
                 onClick = { onScreenChange("scoops") },

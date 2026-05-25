@@ -23,10 +23,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.material3.ModalBottomSheetDefaults
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -35,18 +41,34 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.IntakeViewModel
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.onFocusChanged
 import com.example.SoundUtil
 import com.example.StableDays
-import com.example.StableHistory
-import com.example.data.DailyIntake
+import com.example.data.Supplement
+import com.example.data.SupplementLog
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.rememberTextMeasurer
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.TextStyle
 import com.example.ui.components.CircularTimeSelector
@@ -54,6 +76,7 @@ import com.example.ui.components.NavButton
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ScoopsTrackerScreen(
     viewModel: IntakeViewModel,
@@ -61,22 +84,8 @@ fun ScoopsTrackerScreen(
     onScreenChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val today by viewModel.todayIntake.collectAsStateWithLifecycle()
-    val historyRaw by viewModel.intakesHistory.collectAsStateWithLifecycle()
-    val history = remember(historyRaw) { StableHistory(historyRaw) }
-    
-    val totalCreatineCount = remember(historyRaw) {
-        historyRaw.sumOf { it.creatineCount }
-    }
-    val totalProteinCount = remember(historyRaw) {
-        historyRaw.sumOf { it.proteinCount }
-    }
-
-    val maxCreatine by viewModel.creatineMax.collectAsStateWithLifecycle()
-    val maxProtein by viewModel.proteinMax.collectAsStateWithLifecycle()
-    val reminderEnabled by viewModel.remindersEnabled.collectAsStateWithLifecycle()
-    val reminderHour by viewModel.reminderHour.collectAsStateWithLifecycle()
-    val reminderMinute by viewModel.reminderMinute.collectAsStateWithLifecycle()
+    val supplements by viewModel.supplements.collectAsStateWithLifecycle()
+    val allSupplementLogs by viewModel.allSupplementLogs.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var calendarMonthView by remember { mutableStateOf(Calendar.getInstance()) }
@@ -87,50 +96,9 @@ fun ScoopsTrackerScreen(
             calendarClickDate = dateStr
         }
     }
-    
-    var showGoalSettings by remember { mutableStateOf(false) }
 
-    var draggingCreatineInput by remember { mutableStateOf("") }
-    var draggingProteinInput by remember { mutableStateOf("") }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            viewModel.toggleReminders(context)
-            Toast.makeText(context, "Daily reminders configured successfully!", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "Notification permission is required for reminders.", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    // Debounced savings for goal settings to avoid keystroke DB transactions
-    LaunchedEffect(draggingCreatineInput) {
-        kotlinx.coroutines.delay(500)
-        val parsed = draggingCreatineInput.toIntOrNull()
-        if (parsed != null && parsed in 1..100 && parsed != maxCreatine) {
-            viewModel.setCreatineGoal(parsed)
-        }
-    }
-
-    LaunchedEffect(draggingProteinInput) {
-        kotlinx.coroutines.delay(500)
-        val parsed = draggingProteinInput.toIntOrNull()
-        if (parsed != null && parsed in 1..100 && parsed != maxProtein) {
-            viewModel.setProteinGoal(parsed)
-        }
-    }
-
-    LaunchedEffect(maxCreatine, maxProtein) {
-        val parsedC = draggingCreatineInput.toIntOrNull()
-        if (parsedC != maxCreatine) {
-            draggingCreatineInput = maxCreatine.toString()
-        }
-        val parsedP = draggingProteinInput.toIntOrNull()
-        if (parsedP != maxProtein) {
-            draggingProteinInput = maxProtein.toString()
-        }
-    }
+    var showAddBottomSheet by remember { mutableStateOf(false) }
+    var selectedSupplementId by remember { mutableStateOf<Int?>(null) }
 
     val monthName = remember(calendarMonthView) {
         val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
@@ -175,28 +143,13 @@ fun ScoopsTrackerScreen(
     }
 
     // Dynamic Theme Color Mapping
-    val themeBg = if (isDarkMode) Color(0xFF140F0D) else Color(0xFFFDF8F6)
-    val ThemeTextTitle = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF201A19)
-    val ThemeTextSubtitle = if (isDarkMode) Color(0xFF74797A) else Color(0xFF74797A)
-    val CardWhiteBackground = if (isDarkMode) Color(0xFF241D1A) else Color(0xFFFFFFFF)
+    val themeBg = if (isDarkMode) Color(0xFF0B0B0C) else Color(0xFFF4F6F8)
+    val ThemeTextTitle = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF0B0B0C)
+    val ThemeTextSubtitle = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244)
+    val CardWhiteBackground = if (isDarkMode) Color(0xFF1C1C1E) else Color(0xFFFFFFFF)
+    val CardBorderColor = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f)
 
-    val CreatineBackground = if (isDarkMode) Color(0xFF2E1914) else Color(0xFFFCEEEB)
-    val CreatineBorder = if (isDarkMode) Color(0xFF4A251E) else Color(0xFFF4DDDA)
-    val CreatineAccent = if (isDarkMode) Color(0xFFFFB4A2) else Color(0xFF9C432F)
-    val CreatineTextDark = if (isDarkMode) Color(0xFFFFDAD3) else Color(0xFF531B10)
-
-    val ProteinBackground = if (isDarkMode) Color(0xFF14241F) else Color(0xFFF0F3F1)
-    val ProteinBorder = if (isDarkMode) Color(0xFF223E36) else Color(0xFFE0E3E1)
-    val ProteinAccent = if (isDarkMode) Color(0xFF81D4C0) else Color(0xFF3B695E)
-    val ProteinTextDark = if (isDarkMode) Color(0xFFD6EAE4) else Color(0xFF191C1B)
-
-    val ReminderBackground = if (isDarkMode) Color(0xFF42211A) else Color(0xFFF4DDDA)
-    val AvatarBackground = if (isDarkMode) Color(0xFFBD8E85) else Color(0xFFEAC2BA)
-    val ReminderTextColor = if (isDarkMode) Color(0xFFFFF1EF) else Color(0xFF531B10)
-    val ReminderSubtextColor = if (isDarkMode) Color(0xFFFFF1EF).copy(alpha = 0.75f) else Color(0xFF531B10).copy(alpha = 0.7f)
-
-    val displayCMax = today?.creatineMax ?: maxCreatine
-    val displayPMax = today?.proteinMax ?: maxProtein
+    val emptyStateButtonColor = if (isDarkMode) Color(0xFFFFB4A2) else Color(0xFFE64A19)
 
     Column(
         modifier = modifier
@@ -204,204 +157,178 @@ fun ScoopsTrackerScreen(
             .background(themeBg),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+
+        // Section header and Add button
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            NavButton(
-                text = "Hydration",
-                icon = Icons.Filled.LocalActivity,
-                isDark = isDarkMode,
-                activeColor = Color(0xFF00ACC1),
-                onClick = { onScreenChange("water") },
-                modifier = Modifier.weight(1f).testTag("goto_water")
+            Text(
+                text = "ACTIVE TUBS",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = ThemeTextSubtitle,
+                letterSpacing = 0.5.sp
             )
-            NavButton(
-                text = "Nutrition",
-                icon = Icons.Filled.Restaurant,
-                isDark = isDarkMode,
-                activeColor = if (isDarkMode) Color(0xFF81C784) else Color(0xFF2E7D32),
-                onClick = { onScreenChange("nutrition") },
-                modifier = Modifier.weight(1f).testTag("goto_nutrition")
-            )
-        }
-
-        // Main Counters Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            IntakeCounterCard(
-                title = "Creatine",
-                subtitle = "Total scoops logged",
-                count = totalCreatineCount,
-                max = displayCMax,
-                primaryColor = CreatineAccent,
-                textColorDark = CreatineTextDark,
-                containerColor = CreatineBackground,
-                borderColor = CreatineBorder,
-                unitLabel = if (totalCreatineCount == 1) "SCOOP" else "SCOOPS",
-                onIncrement = { 
-                    viewModel.incrementCreatine() 
-                    SoundUtil.playConfirmationSound()
+            TextButton(
+                onClick = {
+                    if (supplements.size >= 10) {
+                        Toast.makeText(context, "Maximum limit of 10 tubs reached.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        showAddBottomSheet = true
+                    }
                 },
-                onDecrement = { viewModel.decrementCreatine() },
-                modifier = Modifier.weight(1f)
-            )
-
-            IntakeCounterCard(
-                title = "Protein",
-                subtitle = "Total scoops logged",
-                count = totalProteinCount,
-                max = displayPMax,
-                primaryColor = ProteinAccent,
-                textColorDark = ProteinTextDark,
-                containerColor = ProteinBackground,
-                borderColor = ProteinBorder,
-                unitLabel = if (totalProteinCount == 1) "SCOOP" else "SCOOPS",
-                onIncrement = { 
-                    viewModel.incrementProtein() 
-                    SoundUtil.playConfirmationSound()
-                },
-                onDecrement = { viewModel.decrementProtein() },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Customize Goal Targets Card
-        Card(
-            colors = CardDefaults.cardColors(containerColor = CardWhiteBackground),
-            border = BorderStroke(1.dp, CreatineBorder),
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.testTag("add_supplement_button")
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showGoalSettings = !showGoalSettings }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Icon(Icons.Filled.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add New", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Supplements list
+        if (supplements.isEmpty()) {
+            // Empty State Card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardWhiteBackground),
+                border = BorderStroke(1.dp, CardBorderColor),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Build,
-                            contentDescription = "Goal Limits",
-                            tint = ThemeTextTitle,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Customize Goal Targets",
-                            color = ThemeTextTitle,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                    Icon(
+                        imageVector = Icons.Default.Medication,
+                        contentDescription = "No Tubs",
+                        tint = ThemeTextSubtitle,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = "No Tubs Tracked",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ThemeTextTitle
+                    )
+                    Text(
+                        text = "Track your tub servings and monitor stock levels dynamically.",
+                        fontSize = 12.sp,
+                        color = ThemeTextSubtitle,
+                        textAlign = TextAlign.Center
+                    )
+                    Button(
+                        onClick = {
+                            if (supplements.size >= 10) {
+                                Toast.makeText(context, "Maximum limit of 10 tubs reached.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showAddBottomSheet = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = emptyStateButtonColor),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Add Your First Tub", color = Color.White)
+                    }
+                }
+            }
+        } else {
+            if (supplements.size <= 3) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    supplements.forEach { supp ->
+                        SupplementStockCard(
+                            supp = supp,
+                            isDarkMode = isDarkMode,
+                            themeTextTitle = ThemeTextTitle,
+                            themeTextSubtitle = ThemeTextSubtitle,
+                            cardBg = CardWhiteBackground,
+                            borderColor = CardBorderColor,
+                            onLog = {
+                                viewModel.logServingToday(supp)
+                                SoundUtil.playConfirmationSound()
+                            },
+                            onDelete = { viewModel.deleteSupplement(supp.id) }
                         )
                     }
-                    Icon(
-                        imageVector = if (showGoalSettings) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                        contentDescription = "Toggle Expand",
-                        tint = ThemeTextSubtitle
-                    )
                 }
+            } else {
+                val topThree = remember(supplements) { supplements.take(3) }
+                val remaining = remember(supplements) { supplements.drop(3) }
+                var isExpanded by remember { mutableStateOf(false) }
 
-                AnimatedVisibility(
-                    visible = showGoalSettings,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.padding(top = 8.dp)
+                    // Show first 3 tubs directly
+                    topThree.forEach { supp ->
+                        SupplementStockCard(
+                            supp = supp,
+                            isDarkMode = isDarkMode,
+                            themeTextTitle = ThemeTextTitle,
+                            themeTextSubtitle = ThemeTextSubtitle,
+                            cardBg = CardWhiteBackground,
+                            borderColor = CardBorderColor,
+                            onLog = {
+                                viewModel.logServingToday(supp)
+                                SoundUtil.playConfirmationSound()
+                            },
+                            onDelete = { viewModel.deleteSupplement(supp.id) }
+                        )
+                    }
+
+                    // Clickable Expand/Collapse Toggle Button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isExpanded = !isExpanded }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "Creatine Goal Target (Scoops)",
-                                color = ThemeTextSubtitle,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            OutlinedTextField(
-                                value = draggingCreatineInput,
-                                onValueChange = { newValue ->
-                                    draggingCreatineInput = newValue
-                                },
-                                placeholder = { Text("e.g. 5") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = CreatineAccent,
-                                    unfocusedBorderColor = CreatineBorder,
-                                    focusedLabelColor = CreatineAccent,
-                                    cursorColor = CreatineAccent,
-                                    focusedContainerColor = CreatineBackground.copy(alpha = 0.3f),
-                                    unfocusedContainerColor = Color.Transparent
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().testTag("creatine_goal_input")
-                            )
-                        }
+                        Text(
+                            text = if (isExpanded) "Show Less" else "Show More (${remaining.size})",
+                            color = ThemeTextSubtitle,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (isExpanded) "Collapse" else "Expand",
+                            tint = ThemeTextSubtitle,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "Protein Goal Target (Scoops)",
-                                color = ThemeTextSubtitle,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            OutlinedTextField(
-                                value = draggingProteinInput,
-                                onValueChange = { newValue ->
-                                    draggingProteinInput = newValue
-                                },
-                                placeholder = { Text("e.g. 4") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = ProteinAccent,
-                                    unfocusedBorderColor = ProteinBorder,
-                                    focusedLabelColor = ProteinAccent,
-                                    cursorColor = ProteinAccent,
-                                    focusedContainerColor = ProteinBackground.copy(alpha = 0.3f),
-                                    unfocusedContainerColor = Color.Transparent
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().testTag("protein_goal_input")
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        HorizontalDivider(color = CreatineBorder.copy(alpha = 0.4f), thickness = 1.dp)
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        OutlinedButton(
-                            onClick = { viewModel.clearAllHistory() },
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFFBA1A1A)
-                            ),
-                            border = BorderStroke(1.dp, Color(0xFFBA1A1A).copy(alpha = 0.4f)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth().testTag("reset_logs_button")
+                    // Show the rest of the tubs inline with animation
+                    AnimatedVisibility(
+                        visible = isExpanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = "Reset Logs",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = Color(0xFFBA1A1A)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Reset Intake History",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
+                            remaining.forEach { supp ->
+                                SupplementStockCard(
+                                    supp = supp,
+                                    isDarkMode = isDarkMode,
+                                    themeTextTitle = ThemeTextTitle,
+                                    themeTextSubtitle = ThemeTextSubtitle,
+                                    cardBg = CardWhiteBackground,
+                                    borderColor = CardBorderColor,
+                                    onLog = {
+                                        viewModel.logServingToday(supp)
+                                        SoundUtil.playConfirmationSound()
+                                    },
+                                    onDelete = { viewModel.deleteSupplement(supp.id) }
                                 )
                             }
                         }
@@ -415,141 +342,246 @@ fun ScoopsTrackerScreen(
             monthName = monthName,
             days = daysOfMonth,
             startOffset = startOffset,
-            history = history,
+            supplements = supplements,
+            supplementLogs = allSupplementLogs,
             onDayClick = onDayClickStable,
             onPrevMonth = onPrevMonthStable,
             onNextMonth = onNextMonthStable,
-            creatineAccent = CreatineAccent,
-            proteinAccent = ProteinAccent,
-            creatineBorder = CreatineBorder,
             cardBackground = CardWhiteBackground,
-            creatineBg = CreatineBackground,
+            borderColor = CardBorderColor,
             textTitleColor = ThemeTextTitle,
             textSubColor = ThemeTextSubtitle
         )
 
-        // Daily Reminder Card
-        Card(
-            colors = CardDefaults.cardColors(containerColor = ReminderBackground),
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth()
+
+    }
+
+    // Add Supplement Bottom Sheet
+    if (showAddBottomSheet) {
+        var newName by remember { mutableStateOf("") }
+        var selectedType by remember { mutableStateOf("Powder") }
+        var newTotalStock by remember { mutableStateOf("") }
+        var newDailyTarget by remember { mutableStateOf("") }
+        
+        val swatches = listOf(
+            "#FF3333", // Red
+            "#FF9100", // Orange
+            "#FFEB3B", // Yellow
+            "#21D021", // Green
+            "#3377FF", // Blue
+            "#E040FB"  // Purple
+        )
+        var selectedColor by remember { mutableStateOf(swatches.first()) }
+        
+        val types = listOf("Powder", "Capsule", "Liquid", "Gummy")
+        
+        var isNameFocused by remember { mutableStateOf(false) }
+        var isSizeFocused by remember { mutableStateOf(false) }
+        var isTargetFocused by remember { mutableStateOf(false) }
+        val isAnyFocused = isNameFocused || isSizeFocused || isTargetFocused
+        
+        ModalBottomSheet(
+            onDismissRequest = { showAddBottomSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = CardWhiteBackground,
+            properties = ModalBottomSheetDefaults.properties(
+                shouldDismissOnBackPress = false
+            )
         ) {
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Daily Reminder",
-                            color = ReminderTextColor,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        val currentReminderText = try {
-                            formatReminderTimeString(reminderHour, reminderMinute)
-                        } catch (e: Exception) {
-                            "Scheduled time"
-                        }
-                        Text(
-                            text = if (reminderEnabled) "Scheduled for $currentReminderText" else "Log your scoops before midnight",
-                            color = ReminderSubtextColor,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    Switch(
-                        checked = reminderEnabled,
-                        onCheckedChange = { checked ->
-                            if (checked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                val status = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-                                if (status != PackageManager.PERMISSION_GRANTED) {
-                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                } else {
-                                    viewModel.toggleReminders(context)
-                                }
-                            } else {
-                                viewModel.toggleReminders(context)
-                            }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = CreatineAccent,
-                            uncheckedThumbColor = ReminderTextColor,
-                            uncheckedTrackColor = AvatarBackground
-                        ),
-                        modifier = Modifier.testTag("reminder_toggle_switch")
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = reminderEnabled,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .padding(bottom = 20.dp)
-                    ) {
-                        HorizontalDivider(color = AvatarBackground.copy(alpha = 0.5f), thickness = 1.dp)
-                        Spacer(modifier = Modifier.height(14.dp))
-                        
-                        CircularTimeSelector(
-                            hour = reminderHour,
-                            minute = reminderMinute,
-                            onTimeChanged = { h, m ->
-                                viewModel.changeReminderTime(context, h, m)
-                            },
-                            activeColor = CreatineAccent,
-                            isDarkMode = isDarkMode,
-                            testTagPrefix = "scoops_reminder"
-                        )
-                    }
+            val focusManager = LocalFocusManager.current
+            val keyboardController = LocalSoftwareKeyboardController.current
+            
+            val isKeyboardVisible = WindowInsets.isImeVisible
+            LaunchedEffect(isKeyboardVisible) {
+                if (!isKeyboardVisible) {
+                    focusManager.clearFocus()
                 }
             }
+            
+            BackHandler(enabled = true) {
+                if (isAnyFocused) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                } else {
+                    showAddBottomSheet = false
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Add New Tub",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ThemeTextTitle
+                )
+                
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Tub Name (e.g. Protein, Creatine)") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                        focusedLabelColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                        cursorColor = Color(android.graphics.Color.parseColor(selectedColor))
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { isNameFocused = it.isFocused }
+                        .testTag("new_supplement_name")
+                )
+                
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Type", fontSize = 12.sp, color = ThemeTextSubtitle, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        types.forEach { type ->
+                            val isSelected = selectedType == type
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedType = type },
+                                label = { Text(type, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    val unit = when (selectedType) {
+                        "Powder" -> "scoops"
+                        "Capsule" -> "capsules"
+                        "Liquid" -> "ml"
+                        "Gummy" -> "gummies"
+                        else -> "servings"
+                    }
+                    
+                    OutlinedTextField(
+                        value = newTotalStock,
+                        onValueChange = { newTotalStock = it.filter { char -> char.isDigit() } },
+                        label = { Text("Tub Size ($unit)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                            focusedLabelColor = Color(android.graphics.Color.parseColor(selectedColor))
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { isSizeFocused = it.isFocused }
+                            .testTag("new_supplement_stock")
+                    )
+                    
+                    OutlinedTextField(
+                        value = newDailyTarget,
+                        onValueChange = { newDailyTarget = it.filter { char -> char.isDigit() } },
+                        label = { Text("Daily Target ($unit)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                            focusedLabelColor = Color(android.graphics.Color.parseColor(selectedColor))
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { isTargetFocused = it.isFocused }
+                            .testTag("new_supplement_target")
+                    )
+                }
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Visual Color Swatch",
+                        fontSize = 12.sp,
+                        color = ThemeTextSubtitle,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    
+                    // Presets Swatches Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        swatches.forEach { hexColor ->
+                            val isSelected = selectedColor == hexColor
+                            val color = Color(android.graphics.Color.parseColor(hexColor))
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(
+                                        width = if (isSelected) 3.dp else 0.dp,
+                                        color = if (isSelected) ThemeTextTitle else Color.Transparent,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { selectedColor = hexColor }
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    // Custom Color Wheel
+                    ColorWheel(
+                        selectedColorHex = selectedColor,
+                        isDarkMode = isDarkMode,
+                        onColorChange = { selectedColor = it }
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        val stock = newTotalStock.toIntOrNull() ?: 0
+                        val target = newDailyTarget.toIntOrNull() ?: 0
+                        if (newName.isNotBlank() && stock > 0 && target > 0) {
+                            val unit = when (selectedType) {
+                                "Powder" -> "scoops"
+                                "Capsule" -> "capsules"
+                                "Liquid" -> "ml"
+                                "Gummy" -> "gummies"
+                                else -> "servings"
+                            }
+                            viewModel.addSupplement(
+                                name = newName,
+                                type = selectedType,
+                                servingUnit = unit,
+                                totalStock = stock,
+                                dailyTarget = target,
+                                colorTag = selectedColor
+                            )
+                            showAddBottomSheet = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(android.graphics.Color.parseColor(selectedColor))),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("confirm_add_supplement")
+                ) {
+                    Text("Create Tub", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+            }
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
     }
 
     // Calendar Click Confirmation Dialog
     calendarClickDate?.let { dateStr ->
-        val record = history.list.find { it.date == dateStr }
-        val initCreatineStr = if (record == null || record.creatineCount == 0) "" else record.creatineCount.toString()
-        val initProteinStr = if (record == null || record.proteinCount == 0) "" else record.proteinCount.toString()
-
-        var inputCreatineScoops by remember(record) { mutableStateOf(initCreatineStr) }
-        var inputProteinScoops by remember(record) { mutableStateOf(initProteinStr) }
-
-        val otherDaysCreatine = remember(history, dateStr) {
-            history.list.filter { it.date != dateStr }.sumOf { it.creatineCount }
-        }
-        val otherDaysProtein = remember(history, dateStr) {
-            history.list.filter { it.date != dateStr }.sumOf { it.proteinCount }
-        }
-
-        val creatineInputVal = inputCreatineScoops.toIntOrNull() ?: 0
-        val proteinInputVal = inputProteinScoops.toIntOrNull() ?: 0
-
-        val isCreatineExceeded = creatineInputVal > displayCMax
-        val isProteinExceeded = proteinInputVal > displayPMax
-
-        val hasWrittenCreatine = inputCreatineScoops.isNotEmpty()
-        val hasWrittenProtein = inputProteinScoops.isNotEmpty()
-
-        var isCreatineCompleted by remember(record) {
-            mutableStateOf(record?.creatineTicked == true || (record != null && record.creatineCount >= displayCMax))
-        }
-        var isProteinCompleted by remember(record) {
-            mutableStateOf(record?.proteinTicked == true || (record != null && record.proteinCount >= displayPMax))
-        }
-
         AlertDialog(
             onDismissRequest = { calendarClickDate = null },
             title = {
@@ -557,12 +589,12 @@ fun ScoopsTrackerScreen(
                     Icon(
                         imageVector = Icons.Filled.DateRange,
                         contentDescription = "Log date details",
-                        tint = CreatineAccent,
+                        tint = emptyStateButtonColor,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Update Log: $dateStr",
+                        text = "Update Logs: $dateStr",
                         color = ThemeTextTitle,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
@@ -570,308 +602,65 @@ fun ScoopsTrackerScreen(
                 }
             },
             text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = CreatineBackground),
-                        border = BorderStroke(1.dp, CreatineBorder),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "CREATINE INTAKE",
-                                color = CreatineTextDark,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (supplements.isEmpty()) {
+                        Text("No tubs configured yet.", color = ThemeTextSubtitle, fontSize = 13.sp)
+                    } else {
+                        supplements.forEach { supp ->
+                            val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.LightGray }
+                            val dayLogs = allSupplementLogs.filter { it.date == dateStr && it.supplementId == supp.id }
+                            val loggedCount = dayLogs.size
                             
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.05f)),
+                                border = BorderStroke(1.dp, color.copy(alpha = 0.2f)),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = isCreatineCompleted && hasWrittenCreatine,
-                                        onCheckedChange = { checked ->
-                                            isCreatineCompleted = checked
-                                            if (!checked) {
-                                                inputCreatineScoops = ""
-                                            }
-                                        },
-                                        enabled = hasWrittenCreatine,
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = CreatineAccent,
-                                            uncheckedColor = CreatineTextDark.copy(alpha = 0.6f)
-                                        )
-                                    )
-                                    Text(
-                                        text = "Taken",
-                                        color = if (hasWrittenCreatine) CreatineTextDark else CreatineTextDark.copy(alpha = 0.5f),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                                
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val currentVal = inputCreatineScoops.toIntOrNull() ?: 0
-                                    Text(
-                                        text = "$currentVal ${if (currentVal == 1) "Scoop" else "Scoops"}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = CreatineTextDark,
-                                        modifier = Modifier.testTag("creatine_scoops_count")
-                                    )
+                                    Column {
+                                        Text(supp.name, fontWeight = FontWeight.Bold, color = ThemeTextTitle, fontSize = 14.sp)
+                                        Text("Logged: $loggedCount ${supp.servingUnit}", fontSize = 11.sp, color = ThemeTextSubtitle)
+                                    }
+                                    
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
+                                        // Minus Button
                                         IconButton(
-                                            onClick = {
-                                                val currentVal = inputCreatineScoops.toIntOrNull() ?: 0
-                                                if (currentVal > 0) {
-                                                    val newVal = currentVal - 1
-                                                    inputCreatineScoops = if (newVal == 0) "" else newVal.toString()
-                                                    if (newVal == 0) {
-                                                        isCreatineCompleted = false
-                                                    }
-                                                }
-                                            },
-                                            enabled = (inputCreatineScoops.toIntOrNull() ?: 0) > 0,
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .background(
-                                                    color = if ((inputCreatineScoops.toIntOrNull() ?: 0) > 0) CreatineAccent.copy(alpha = 0.15f) else Color.LightGray.copy(alpha = 0.2f),
-                                                    shape = CircleShape
-                                                )
-                                                .testTag("creatine_minus_btn")
+                                            onClick = { viewModel.removeServingOnDate(supp, dateStr) },
+                                            enabled = loggedCount > 0,
+                                            modifier = Modifier.size(32.dp).background(color.copy(alpha = 0.15f), CircleShape)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Remove,
-                                                contentDescription = "Subtract scoop",
-                                                tint = if ((inputCreatineScoops.toIntOrNull() ?: 0) > 0) CreatineAccent else Color.Gray,
-                                                modifier = Modifier.size(18.dp)
-                                            )
+                                            Icon(Icons.Filled.Remove, contentDescription = "Remove", tint = color, modifier = Modifier.size(16.dp))
                                         }
-
-                                        Spacer(modifier = Modifier.width(24.dp))
-
+                                        
+                                        // Plus Button
                                         IconButton(
-                                            onClick = {
-                                                val currentVal = inputCreatineScoops.toIntOrNull() ?: 0
-                                                if (currentVal < displayCMax) {
-                                                    val newVal = currentVal + 1
-                                                    inputCreatineScoops = newVal.toString()
-                                                    isCreatineCompleted = true
-                                                }
-                                            },
-                                            enabled = (inputCreatineScoops.toIntOrNull() ?: 0) < displayCMax,
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .background(
-                                                    color = if ((inputCreatineScoops.toIntOrNull() ?: 0) < displayCMax) CreatineAccent.copy(alpha = 0.15f) else Color.LightGray.copy(alpha = 0.2f),
-                                                    shape = CircleShape
-                                                )
-                                                .testTag("creatine_plus_btn")
+                                            onClick = { viewModel.logServingOnDate(supp, dateStr) },
+                                            enabled = supp.remainingStock > 0,
+                                            modifier = Modifier.size(32.dp).background(color.copy(alpha = 0.15f), CircleShape)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Add,
-                                                contentDescription = "Add scoop",
-                                                tint = if ((inputCreatineScoops.toIntOrNull() ?: 0) < displayCMax) CreatineAccent else Color.Gray,
-                                                modifier = Modifier.size(18.dp)
-                                            )
+                                            Icon(Icons.Filled.Add, contentDescription = "Add", tint = color, modifier = Modifier.size(16.dp))
                                         }
                                     }
                                 }
-                            }
-
-                            if (isCreatineExceeded) {
-                                Text(
-                                    text = "Creatine intake ($creatineInputVal) exceeds limit ($displayCMax)",
-                                    color = Color(0xFFBA1A1A),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = ProteinBackground),
-                        border = BorderStroke(1.dp, ProteinBorder),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "PROTEIN INTAKE",
-                                color = ProteinTextDark,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            )
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = isProteinCompleted && hasWrittenProtein,
-                                        onCheckedChange = { checked ->
-                                            isProteinCompleted = checked
-                                            if (!checked) {
-                                                inputProteinScoops = ""
-                                            }
-                                        },
-                                        enabled = hasWrittenProtein,
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = ProteinAccent,
-                                            uncheckedColor = ProteinTextDark.copy(alpha = 0.6f)
-                                        )
-                                    )
-                                    Text(
-                                        text = "Taken",
-                                        color = if (hasWrittenProtein) ProteinTextDark else ProteinTextDark.copy(alpha = 0.5f),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                                
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    val currentVal = inputProteinScoops.toIntOrNull() ?: 0
-                                    Text(
-                                        text = "$currentVal ${if (currentVal == 1) "Scoop" else "Scoops"}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ProteinTextDark,
-                                        modifier = Modifier.testTag("protein_scoops_count")
-                                    )
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
-                                    ) {
-                                        IconButton(
-                                            onClick = {
-                                                val currentVal = inputProteinScoops.toIntOrNull() ?: 0
-                                                if (currentVal > 0) {
-                                                    val newVal = currentVal - 1
-                                                    inputProteinScoops = if (newVal == 0) "" else newVal.toString()
-                                                    if (newVal == 0) {
-                                                        isProteinCompleted = false
-                                                    }
-                                                }
-                                            },
-                                            enabled = (inputProteinScoops.toIntOrNull() ?: 0) > 0,
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .background(
-                                                    color = if ((inputProteinScoops.toIntOrNull() ?: 0) > 0) ProteinAccent.copy(alpha = 0.15f) else Color.LightGray.copy(alpha = 0.2f),
-                                                    shape = CircleShape
-                                                )
-                                                .testTag("protein_minus_btn")
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Remove,
-                                                contentDescription = "Subtract scoop",
-                                                tint = if ((inputProteinScoops.toIntOrNull() ?: 0) > 0) ProteinAccent else Color.Gray,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.width(24.dp))
-
-                                        IconButton(
-                                            onClick = {
-                                                val currentVal = inputProteinScoops.toIntOrNull() ?: 0
-                                                if (currentVal < displayPMax) {
-                                                    val newVal = currentVal + 1
-                                                    inputProteinScoops = newVal.toString()
-                                                    isProteinCompleted = true
-                                                }
-                                            },
-                                            enabled = (inputProteinScoops.toIntOrNull() ?: 0) < displayPMax,
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .background(
-                                                    color = if ((inputProteinScoops.toIntOrNull() ?: 0) < displayPMax) ProteinAccent.copy(alpha = 0.15f) else Color.LightGray.copy(alpha = 0.2f),
-                                                    shape = CircleShape
-                                                )
-                                                .testTag("protein_plus_btn")
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Add,
-                                                contentDescription = "Add scoop",
-                                                tint = if ((inputProteinScoops.toIntOrNull() ?: 0) < displayPMax) ProteinAccent else Color.Gray,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (isProteinExceeded) {
-                                Text(
-                                    text = "Protein intake ($proteinInputVal) exceeds limit ($displayPMax)",
-                                    color = Color(0xFFBA1A1A),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
                             }
                         }
                     }
                 }
             },
             confirmButton = {
-                val isConfirmEnabled = !isCreatineExceeded && !isProteinExceeded
                 Button(
-                    onClick = {
-                        val finalCCount = inputCreatineScoops.toIntOrNull() ?: 0
-                        val finalPCount = inputProteinScoops.toIntOrNull() ?: 0
-                        
-                        viewModel.updateLogForDay(
-                            dateStr = dateStr,
-                            cCount = finalCCount,
-                            pCount = finalPCount,
-                            cTicked = isCreatineCompleted && hasWrittenCreatine,
-                            pTicked = isProteinCompleted && hasWrittenProtein
-                        )
-                        SoundUtil.playConfirmationSound()
-                        calendarClickDate = null
-                    },
-                    enabled = isConfirmEnabled,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CreatineAccent,
-                        disabledContainerColor = CreatineAccent.copy(alpha = 0.5f)
-                    )
+                    onClick = { calendarClickDate = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
                 ) {
-                    Text("Confirm", color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { calendarClickDate = null }
-                ) {
-                    Text("Cancel", color = ThemeTextSubtitle)
+                    Text("Done", color = Color.White)
                 }
             },
             containerColor = CardWhiteBackground
@@ -879,115 +668,132 @@ fun ScoopsTrackerScreen(
     }
 }
 
-fun formatReminderTimeString(hour: Int, minute: Int): String {
-    val amPm = if (hour < 12) "AM" else "PM"
-    val displayHour = when {
-        hour == 0 -> 12
-        hour > 12 -> hour - 12
-        else -> hour
-    }
-    return String.format(Locale.getDefault(), "%d:%02d %s", displayHour, minute, amPm)
-}
-
 @Composable
-fun IntakeCounterCard(
-    title: String,
-    subtitle: String,
-    count: Int,
-    max: Int,
-    primaryColor: Color,
-    textColorDark: Color,
-    containerColor: Color,
+fun SupplementStockCard(
+    supp: Supplement,
+    isDarkMode: Boolean,
+    themeTextTitle: Color,
+    themeTextSubtitle: Color,
+    cardBg: Color,
     borderColor: Color,
-    unitLabel: String,
-    onIncrement: () -> Unit,
-    onDecrement: () -> Unit,
-    modifier: Modifier = Modifier
+    onLog: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.LightGray }
+    
     Card(
-        modifier = modifier.aspectRatio(1.02f),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
         border = BorderStroke(1.dp, borderColor),
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth().testTag("supplement_card_${supp.name}")
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Circular progress stock ring
+            Box(
+                modifier = Modifier.size(68.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = title,
-                    color = textColorDark,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                val progress = if (supp.totalStock > 0) supp.remainingStock.toFloat() / supp.totalStock.toFloat() else 0f
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeW = 6.dp.toPx()
+                    drawArc(
+                        color = color.copy(alpha = 0.12f),
+                        startAngle = 0f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        style = Stroke(width = strokeW)
+                    )
+                    drawArc(
+                        color = color,
+                        startAngle = -90f,
+                        sweepAngle = 360f * progress,
+                        useCenter = false,
+                        style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                    )
+                }
                 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color.White.copy(alpha = 0.35f))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val pct = (progress * 100).toInt()
                     Text(
-                        text = "MAX $max",
-                        color = textColorDark,
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "$pct%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = themeTextTitle
                     )
                 }
             }
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 1.dp)
-            ) {
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "$count",
-                    color = primaryColor,
-                    fontSize = 40.sp,
-                    fontWeight = FontWeight.Black,
-                    lineHeight = 40.sp
+                    text = supp.name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = themeTextTitle
                 )
                 Text(
-                    text = unitLabel,
-                    color = textColorDark.copy(alpha = 0.7f),
-                    fontSize = 10.sp,
+                    text = "Type: ${supp.type} • Target: ${supp.dailyTarget} ${supp.servingUnit}",
+                    fontSize = 11.sp,
+                    color = themeTextSubtitle
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Stock: ${supp.remainingStock} / ${supp.totalStock} left",
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
+                    color = color
                 )
             }
 
+            Spacer(modifier = Modifier.width(8.dp))
+
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.DateRange,
-                    contentDescription = null,
-                    tint = textColorDark.copy(alpha = 0.5f),
-                    modifier = Modifier.size(12.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = "Logged via Calendar",
-                    color = textColorDark.copy(alpha = 0.5f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                )
+                IconButton(
+                    onClick = onLog,
+                    enabled = supp.remainingStock > 0,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(color.copy(alpha = 0.15f), CircleShape)
+                        .testTag("log_serving_btn_${supp.name}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Log serving",
+                        tint = color,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color.Red.copy(alpha = 0.1f), CircleShape)
+                        .testTag("delete_supplement_btn_${supp.name}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Delete tub",
+                        tint = Color.Red,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
+}
+
+fun formatReminderTimeString(hour: Int, minute: Int): String {
+    val amPm = if (hour < 12) "AM" else "PM"
+    val h = if (hour == 0) 12 else if (hour > 12) hour - 12 else hour
+    return String.format(Locale.US, "%d:%02d %s", h, minute, amPm)
 }
 
 @Composable
@@ -995,27 +801,21 @@ fun MonthlyCalendarSection(
     monthName: String,
     days: StableDays,
     startOffset: Int,
-    history: StableHistory,
+    supplements: List<Supplement>,
+    supplementLogs: List<SupplementLog>,
     onDayClick: (String) -> Unit,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
-    creatineAccent: Color,
-    proteinAccent: Color,
-    creatineBorder: Color,
     cardBackground: Color,
-    creatineBg: Color,
+    borderColor: Color,
     textTitleColor: Color,
     textSubColor: Color
 ) {
-    val historyMap = remember(history) {
-        history.list.associateBy { it.date }
-    }
-
     val textMeasurer = rememberTextMeasurer()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = cardBackground),
-        border = BorderStroke(1.dp, creatineBorder),
+        border = BorderStroke(1.dp, borderColor),
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -1051,12 +851,12 @@ fun MonthlyCalendarSection(
                         onClick = onPrevMonth,
                         modifier = Modifier
                             .size(32.dp)
-                            .background(creatineBg, CircleShape)
+                            .background(textSubColor.copy(alpha = 0.1f), CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = "Prev Month",
-                            tint = creatineAccent,
+                            tint = textTitleColor,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1065,12 +865,12 @@ fun MonthlyCalendarSection(
                         onClick = onNextMonth,
                         modifier = Modifier
                             .size(32.dp)
-                            .background(creatineBg, CircleShape)
+                            .background(textSubColor.copy(alpha = 0.1f), CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = "Next Month",
-                            tint = creatineAccent,
+                            tint = textTitleColor,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1131,18 +931,10 @@ fun MonthlyCalendarSection(
                         if (cellIndex >= startOffset && cellIndex < totalCells) {
                             val dayDateStr = days.list[cellIndex - startOffset]
                             val dayNum = (cellIndex - startOffset + 1).toString()
-                            val record = historyMap[dayDateStr]
-
-                            val cMax = record?.creatineMax ?: 5
-                            val pMax = record?.proteinMax ?: 4
-                            val creatineCount = record?.creatineCount ?: 0
-                            val proteinCount = record?.proteinCount ?: 0
-
-                            val isCreatineTicked = record?.creatineTicked == true || (creatineCount >= cMax && cMax > 0)
-                            val isProteinTicked = record?.proteinTicked == true || (proteinCount >= pMax && pMax > 0)
-
-                            val isAnyTicked = isCreatineTicked || isProteinTicked
-                            val isAnyLogged = creatineCount > 0 || proteinCount > 0
+                            
+                            val dayLogs = supplementLogs.filter { it.date == dayDateStr }
+                            val loggedSupplements = supplements.filter { supp -> dayLogs.any { it.supplementId == supp.id } }
+                            val isAnyLogged = loggedSupplements.isNotEmpty()
 
                             val cellLeft = colIndex * cellW
                             val cellTop = rowIndex * cellH
@@ -1152,10 +944,9 @@ fun MonthlyCalendarSection(
                             val boxH = cellH - padding * 2
 
                             // 1. Draw Background
-                            val bgAlpha = if (isAnyTicked) 0.5f else if (isAnyLogged) 0.25f else 0.0f
-                            if (bgAlpha > 0f) {
+                            if (isAnyLogged) {
                                 drawRoundRect(
-                                    color = creatineBg.copy(alpha = bgAlpha),
+                                    color = textSubColor.copy(alpha = 0.08f),
                                     topLeft = Offset(boxLeft, boxTop),
                                     size = Size(boxW, boxH),
                                     cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx)
@@ -1163,10 +954,9 @@ fun MonthlyCalendarSection(
                             }
 
                             // 2. Draw Border
-                            if (isAnyTicked || isAnyLogged) {
-                                val borderColor = if (isAnyTicked) creatineAccent.copy(alpha = 0.3f) else creatineAccent.copy(alpha = 0.15f)
+                            if (isAnyLogged) {
                                 drawRoundRect(
-                                    color = borderColor,
+                                    color = textSubColor.copy(alpha = 0.2f),
                                     topLeft = Offset(boxLeft + borderStrokeWidth / 2f, boxTop + borderStrokeWidth / 2f),
                                     size = Size(boxW - borderStrokeWidth, boxH - borderStrokeWidth),
                                     cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx),
@@ -1178,65 +968,181 @@ fun MonthlyCalendarSection(
                             val textStyle = TextStyle(
                                 color = textTitleColor,
                                 fontSize = 12.sp,
-                                fontWeight = if (isAnyTicked) FontWeight.Bold
-                                             else if (isAnyLogged) FontWeight.Medium
-                                             else FontWeight.Normal
+                                fontWeight = if (isAnyLogged) FontWeight.Bold else FontWeight.Normal
                             )
                             val textResult = textMeasurer.measure(text = dayNum, style = textStyle)
                             val textLeft = boxLeft + (boxW - textResult.size.width) / 2f
                             val textTop = boxTop + (boxH - textResult.size.height) / 2f - 4.dp.toPx()
                             drawText(textResult, topLeft = Offset(textLeft, textTop))
 
-                            // 4. Draw Pill Indicators
-                            val creatineColor = if (isCreatineTicked) creatineAccent
-                                                else if (creatineCount > 0) creatineAccent.copy(alpha = 0.5f)
-                                                else Color.LightGray.copy(alpha = 0.4f)
-                            val proteinColor = if (isProteinTicked) proteinAccent
-                                               else if (proteinCount > 0) proteinAccent.copy(alpha = 0.5f)
-                                               else Color.LightGray.copy(alpha = 0.4f)
-
-                            val capSingleW = 10.dp.toPx()
-                            val capH = 4.dp.toPx()
-                            val capCorner = 2.dp.toPx()
-                            val capsSpace = 2.dp.toPx()
-                            val totalCapsW = capSingleW * 2f + capsSpace
-                            val capsLeft = boxLeft + (boxW - totalCapsW) / 2f
-                            val capsTop = boxTop + boxH - 8.dp.toPx()
-
-                            drawRoundRect(
-                                color = creatineColor,
-                                topLeft = Offset(capsLeft, capsTop),
-                                size = Size(capSingleW, capH),
-                                cornerRadius = CornerRadius(capCorner, capCorner)
-                            )
-                            drawRoundRect(
-                                color = proteinColor,
-                                topLeft = Offset(capsLeft + capSingleW + capsSpace, capsTop),
-                                size = Size(capSingleW, capH),
-                                cornerRadius = CornerRadius(capCorner, capCorner)
-                            )
+                            // 4. Draw Pill Indicators (max 4 side-by-side)
+                            val count = loggedSupplements.size.coerceAtMost(4)
+                            if (count > 0) {
+                                val capSingleW = 6.dp.toPx()
+                                val capH = 3.dp.toPx()
+                                val capCorner = 1.5.dp.toPx()
+                                val capsSpace = 2.dp.toPx()
+                                val totalCapsW = capSingleW * count + capsSpace * (count - 1)
+                                var startLeft = boxLeft + (boxW - totalCapsW) / 2f
+                                val capsTop = boxTop + boxH - 7.dp.toPx()
+                                
+                                for (i in 0 until count) {
+                                    val supp = loggedSupplements[i]
+                                    val suppColor = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.LightGray }
+                                    drawRoundRect(
+                                        color = suppColor,
+                                        topLeft = Offset(startLeft, capsTop),
+                                        size = Size(capSingleW, capH),
+                                        cornerRadius = CornerRadius(capCorner, capCorner)
+                                    )
+                                    startLeft += capSingleW + capsSpace
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(modifier = Modifier.size(width = 10.dp, height = 4.dp).clip(CircleShape).background(creatineAccent))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Creatine", color = textSubColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Box(modifier = Modifier.size(width = 10.dp, height = 4.dp).clip(CircleShape).background(proteinAccent))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Protein", color = textSubColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
+@Composable
+fun ColorWheel(
+    selectedColorHex: String,
+    isDarkMode: Boolean,
+    onColorChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Convert hex to hue
+    val initialHue = remember(selectedColorHex) {
+        val hsv = FloatArray(3)
+        try {
+            android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(selectedColorHex), hsv)
+            hsv[0]
+        } catch (e: Exception) {
+            0f
+        }
+    }
+    
+    var hue by remember(initialHue) { mutableStateOf(initialHue) }
+    
+    val diameterDp = 130.dp
+    val strokeWidthDp = 16.dp
+    
+    val spectrumColors = remember {
+        listOf(
+            Color.Red,
+            Color.Yellow,
+            Color.Green,
+            Color.Cyan,
+            Color.Blue,
+            Color.Magenta,
+            Color.Red
+        )
+    }
+    
+    val sweepGradientBrush: Brush = remember {
+        Brush.sweepGradient(colors = spectrumColors)
+    }
+    
+    val selectedColor = remember(selectedColorHex) {
+        try {
+            Color(android.graphics.Color.parseColor(selectedColorHex))
+        } catch (e: Exception) {
+            Color.Red
+        }
+    }
+    
+    Box(
+        modifier = modifier.size(diameterDp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectDragGestures { change, _ ->
+                        change.consume()
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val touch = change.position
+                        val x = touch.x - center.x
+                        val y = touch.y - center.y
+                        var angle = Math.toDegrees(atan2(y.toDouble(), x.toDouble())).toFloat()
+                        if (angle < 0) angle += 360f
+                        
+                        hue = angle
+                        val brightness = if (isDarkMode) 0.95f else 0.75f
+                        val colorInt = android.graphics.Color.HSVToColor(floatArrayOf(angle, 0.9f, brightness))
+                        val hex = String.format("#%06X", 0xFFFFFF and colorInt)
+                        onColorChange(hex)
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures { position ->
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val x = position.x - center.x
+                        val y = position.y - center.y
+                        var angle = Math.toDegrees(atan2(y.toDouble(), x.toDouble())).toFloat()
+                        if (angle < 0) angle += 360f
+                        
+                        hue = angle
+                        val brightness = if (isDarkMode) 0.95f else 0.75f
+                        val colorInt = android.graphics.Color.HSVToColor(floatArrayOf(angle, 0.9f, brightness))
+                        val hex = String.format("#%06X", 0xFFFFFF and colorInt)
+                        onColorChange(hex)
+                    }
+                }
+        ) {
+            val strokeWidthPx = strokeWidthDp.toPx()
+            val outerRadius = (size.width - strokeWidthPx) / 2f
+            
+            // Draw Sweep Gradient color spectrum wheel
+            drawCircle(
+                brush = sweepGradientBrush,
+                radius = outerRadius,
+                style = Stroke(width = strokeWidthPx)
+            )
+            
+            // Draw active handle indicator on the ring
+            val angleRad = Math.toRadians(hue.toDouble())
+            val handleX = (size.width / 2f) + outerRadius * cos(angleRad).toFloat()
+            val handleY = (size.height / 2f) + outerRadius * sin(angleRad).toFloat()
+            
+            // Inner white dot
+            drawCircle(
+                color = Color.White,
+                radius = 7.dp.toPx(),
+                center = Offset(handleX, handleY)
+            )
+            
+            // Outer thin dark stroke for the indicator ring
+            drawCircle(
+                color = Color.DarkGray,
+                radius = 7.dp.toPx(),
+                center = Offset(handleX, handleY),
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+        }
+        
+        // Inner Preview Circle showing selected color
+        val isBright = remember(selectedColor) {
+            (selectedColor.red * 0.299f + selectedColor.green * 0.587f + selectedColor.blue * 0.114f) > 0.5f
+        }
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .background(selectedColor, CircleShape)
+                .border(BorderStroke(1.dp, if (isDarkMode) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.15f)), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Preview",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isBright) Color.Black else Color.White
+            )
         }
     }
 }
