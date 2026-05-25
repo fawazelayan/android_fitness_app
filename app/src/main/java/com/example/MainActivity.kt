@@ -79,7 +79,7 @@ fun MainTrackerScreen(
 
     var currentScreen by remember { mutableStateOf("welcome") }
 
-    val themeBg = if (isDarkMode) Color(0xFF140F0D) else Color(0xFFF4F6F8)
+    val themeBg = if (isDarkMode) Color(0xFF0B0B0C) else Color(0xFFF4F6F8)
     val ThemeTextTitle = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF201A19)
     val ThemeTextSubtitle = if (isDarkMode) Color(0xFF74797A) else Color(0xFF74797A)
     

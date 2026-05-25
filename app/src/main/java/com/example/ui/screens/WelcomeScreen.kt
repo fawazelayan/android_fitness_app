@@ -32,6 +32,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 import com.example.IntakeViewModel
 import java.util.Calendar
 import java.util.Locale
@@ -41,33 +44,33 @@ fun NeonProgressDial(
     progress: Float,
     valueMain: String,
     valueFraction: String,
-    subText: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    fractionOnSameLine: Boolean,
+    percentageText: String,
     neonColor: Color,
     isDarkMode: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val textColor = if (isDarkMode) Color.White else Color(0xFF2E1A16)
-    val labelColor = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244)
+    val textColor = if (isDarkMode) Color.White else Color.Black
+    val labelColor = Color.Gray
     
     BoxWithConstraints(
         modifier = modifier
-            .width(110.dp)
+            .width(120.dp)
             .aspectRatio(1f),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
-            val strokeWidth = 5.dp.toPx()
-            val sweepAngle = 270f * progress.coerceIn(0f, 1f)
+        Canvas(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+            val strokeWidth = 8.dp.toPx()
+            val sweepAngle = 360f * progress.coerceIn(0f, 1f)
             
-            // 1. Draw inactive background track (very subtle, low-opacity active color)
+            // 1. Draw inactive background track (full 360-degree circle)
             drawArc(
-                color = if (isDarkMode) neonColor.copy(alpha = 0.12f) else neonColor.copy(alpha = 0.08f),
-                startAngle = 135f,
-                sweepAngle = 270f,
+                color = if (isDarkMode) neonColor.copy(alpha = 0.15f) else neonColor.copy(alpha = 0.08f),
+                startAngle = -90f,
+                sweepAngle = 360f,
                 useCenter = false,
                 style = Stroke(
-                    width = strokeWidth - 1.dp.toPx(),
+                    width = strokeWidth,
                     cap = StrokeCap.Round
                 )
             )
@@ -83,13 +86,13 @@ fun NeonProgressDial(
                         maskFilter = android.graphics.BlurMaskFilter(20f, android.graphics.BlurMaskFilter.Blur.NORMAL)
                     }
                     val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
-                    canvas.nativeCanvas.drawArc(rect, 135f, sweepAngle, false, paint)
+                    canvas.nativeCanvas.drawArc(rect, -90f, sweepAngle, false, paint)
                 }
             }
             // Core bright arc
             drawArc(
                 color = neonColor,
-                startAngle = 135f,
+                startAngle = -90f,
                 sweepAngle = sweepAngle,
                 useCenter = false,
                 style = Stroke(
@@ -103,45 +106,48 @@ fun NeonProgressDial(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(12.dp)
         ) {
-            Row(verticalAlignment = Alignment.Bottom) {
+            Spacer(modifier = Modifier.height(10.dp))
+            if (fractionOnSameLine) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = valueMain,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textColor
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = valueFraction,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = labelColor
+                    )
+                }
+            } else {
                 Text(
                     text = valueMain,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = textColor
                 )
-                if (valueFraction.isNotEmpty()) {
-                    Text(
-                        text = valueFraction,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = labelColor,
-                        modifier = Modifier.padding(bottom = 2.dp)
-                    )
-                }
+                Text(
+                    text = valueFraction,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = labelColor
+                )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = subText,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal,
-                color = labelColor
-            )
-        }
-        
-        // Icon at the bottom gap
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 0.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = neonColor,
-                modifier = Modifier.size(18.dp)
+                text = percentageText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = neonColor
             )
         }
     }
@@ -150,94 +156,75 @@ fun NeonProgressDial(
 @Composable
 fun WelcomeHubLauncherCard(
     title: String,
-    description: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     accentColor: Color,
     isDarkMode: Boolean,
-    statusInfo: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     testTag: String
 ) {
-    val borderCol = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.6f)
-    val textTitleCol = if (isDarkMode) Color.White else Color(0xFF2E1A16)
-    val textDescCol = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244)
+    val borderCol = if (isDarkMode) accentColor.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.15f)
+    val cardBg = if (isDarkMode) Color(0xFF1C1C1E).copy(alpha = 0.8f) else Color(0xFFFFFFFF)
 
-    val cardBgBrush = if (isDarkMode) {
-        Brush.verticalGradient(listOf(Color(0xFF2C2C30).copy(alpha = 0.5f), Color(0xFF1C1C1E).copy(alpha = 0.3f)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.8f), Color(0xFFF3F3F3).copy(alpha = 0.6f)))
-    }
-
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
+    Box(
+        modifier = modifier
+            .height(68.dp)
+            .clickable(onClick = onClick)
             .testTag(testTag)
-            .background(cardBgBrush, RoundedCornerShape(20.dp)),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = BorderStroke(width = 1.dp, color = borderCol),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Glowing round corner container for icon
+        if (isDarkMode) {
+            // Glow background layer
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(accentColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
+                    .fillMaxSize()
+                    .padding(2.dp)
+                    .blur(10.dp)
+                    .background(
+                        color = accentColor.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+            )
+        }
+        
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(cardBg, RoundedCornerShape(14.dp))
+                .border(BorderStroke(1.dp, borderCol), RoundedCornerShape(14.dp))
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = accentColor,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textTitleCol
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = description,
-                    fontSize = 12.sp,
-                    color = textDescCol,
-                    lineHeight = 16.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isDarkMode) accentColor.copy(alpha = 0.08f) else accentColor.copy(alpha = 0.25f),
-                    border = BorderStroke(0.5.dp, accentColor.copy(alpha = 0.2f))
+                // Icon Container
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(
+                            color = if (isDarkMode) Color(0xFF0F0F11) else Color(0xFFE8E8EC),
+                            shape = RoundedCornerShape(8.dp)
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = statusInfo,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isDarkMode) accentColor else Color(0xFF000000),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = title,
+                        tint = accentColor,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-            }
 
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "Navigate to $title",
-                tint = if (isDarkMode) Color(0xFF705244) else Color(0xFFFFB4A2),
-                modifier = Modifier.size(20.dp)
-            )
+                // Title Text
+                Text(
+                    text = title,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) Color.White else Color.Black,
+                    lineHeight = 13.sp
+                )
+            }
         }
     }
 }
@@ -254,9 +241,6 @@ fun WelcomeHubStatsOverview(
     totalCalories: Int,
     calorieGoal: Int
 ) {
-    val borderCol = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.6f)
-    val titleCol = if (isDarkMode) Color.White else Color(0xFF2E1A16)
-    
     val totalScoops = totalCreatine + totalProtein
     val scoopsGoal = maxCreatine + maxProtein
     
@@ -264,100 +248,107 @@ fun WelcomeHubStatsOverview(
     val waterProgress = if (waterGoalLtr > 0) (totalWaterMl / 1000f) / waterGoalLtr.toFloat() else 0f
     val caloriesProgress = if (calorieGoal > 0) totalCalories.toFloat() / calorieGoal.toFloat() else 0f
 
-    val cardBgBrush = if (isDarkMode) {
-        Brush.verticalGradient(listOf(Color(0xFF2C2C30).copy(alpha = 0.5f), Color(0xFF1C1C1E).copy(alpha = 0.3f)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFFFFFFFF).copy(alpha = 0.8f), Color(0xFFF3F3F3).copy(alpha = 0.6f)))
-    }
+    val scoopsPct = if (scoopsGoal > 0) (totalScoops * 100) / scoopsGoal else 0
+    val waterPct = if (waterGoalLtr > 0) ((totalWaterMl / 1000f) / waterGoalLtr.toFloat() * 100).toInt() else 0
+    val caloriesPct = if (calorieGoal > 0) (totalCalories * 100) / calorieGoal else 0
 
-    Card(
+    val scoopsColor = if (isDarkMode) Color(0xFFFF7A5C) else Color(0xFFD35400)
+    val waterColor = Color(0xFF00E5FF)
+    val caloriesColor = Color(0xFF21D021)
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(cardBgBrush, RoundedCornerShape(24.dp))
-            .testTag("welcome_stats_overview_card"),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = BorderStroke(1.dp, borderCol)
+            .padding(vertical = 12.dp)
+            .testTag("welcome_stats_overview_card")
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 24.dp, horizontal = 12.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            // Scoops Metric Column
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.weight(1f)
             ) {
-                // Scoops Metric Column
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "SCOOPS",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    NeonProgressDial(
-                        progress = scoopsProgress,
-                        valueMain = "$totalScoops",
-                        valueFraction = "/$scoopsGoal",
-                        subText = "Goal",
-                        icon = Icons.Outlined.FitnessCenter,
-                        neonColor = if (isDarkMode) Color(0xFFFF7A5C) else Color(0xFFD35400),
-                        isDarkMode = isDarkMode
-                    )
-                }
+                val headerShadow = if (isDarkMode) {
+                    Shadow(color = scoopsColor.copy(alpha = 0.6f), blurRadius = 12f)
+                } else null
+                Text(
+                    text = "SCOOPS",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) scoopsColor else Color(0xFF0B0B0C),
+                    letterSpacing = 0.5.sp,
+                    style = TextStyle(shadow = headerShadow)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                NeonProgressDial(
+                    progress = scoopsProgress,
+                    valueMain = "$totalScoops",
+                    valueFraction = "/ $scoopsGoal",
+                    fractionOnSameLine = true,
+                    percentageText = "$scoopsPct%",
+                    neonColor = scoopsColor,
+                    isDarkMode = isDarkMode
+                )
+            }
 
-                // Hydration Metric Column
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "HYDRATION",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    NeonProgressDial(
-                        progress = waterProgress,
-                        valueMain = String.format(Locale.US, "%.1fL", totalWaterMl / 1000f),
-                        valueFraction = "",
-                        subText = String.format(Locale.US, "/ %.1fL", waterGoalLtr),
-                        icon = Icons.Outlined.Opacity,
-                        neonColor = Color(0xFF00E5FF),
-                        isDarkMode = isDarkMode
-                    )
-                }
+            // Hydration Metric Column
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.weight(1f)
+            ) {
+                val headerShadow = if (isDarkMode) {
+                    Shadow(color = waterColor.copy(alpha = 0.6f), blurRadius = 12f)
+                } else null
+                Text(
+                    text = "HYDRATION",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) waterColor else Color(0xFF0B0B0C),
+                    letterSpacing = 0.5.sp,
+                    style = TextStyle(shadow = headerShadow)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                NeonProgressDial(
+                    progress = waterProgress,
+                    valueMain = String.format(Locale.US, "%.1fL", totalWaterMl / 1000f),
+                    valueFraction = String.format(Locale.US, "/ %.1fL", waterGoalLtr),
+                    fractionOnSameLine = false,
+                    percentageText = "$waterPct%",
+                    neonColor = waterColor,
+                    isDarkMode = isDarkMode
+                )
+            }
 
-                // Calories Metric Column
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "CALORIES",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = if (isDarkMode) Color(0xFFAFAFAF) else Color(0xFF705244),
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    NeonProgressDial(
-                        progress = caloriesProgress,
-                        valueMain = String.format(Locale.US, "%,d", totalCalories),
-                        valueFraction = "",
-                        subText = String.format(Locale.US, "/ %,d kcal", calorieGoal),
-                        icon = Icons.Outlined.Whatshot,
-                        neonColor = Color(0xFF21D021),
-                        isDarkMode = isDarkMode
-                    )
-                }
+            // Calories Metric Column
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.weight(1f)
+            ) {
+                val headerShadow = if (isDarkMode) {
+                    Shadow(color = caloriesColor.copy(alpha = 0.6f), blurRadius = 12f)
+                } else null
+                Text(
+                    text = "CALORIES",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) caloriesColor else Color(0xFF0B0B0C),
+                    letterSpacing = 0.5.sp,
+                    style = TextStyle(shadow = headerShadow)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                NeonProgressDial(
+                    progress = caloriesProgress,
+                    valueMain = String.format(Locale.US, "%,d", totalCalories),
+                    valueFraction = String.format(Locale.US, "kcal / %,d", calorieGoal),
+                    fractionOnSameLine = false,
+                    percentageText = "$caloriesPct%",
+                    neonColor = caloriesColor,
+                    isDarkMode = isDarkMode
+                )
             }
         }
     }
@@ -575,38 +566,40 @@ fun WelcomeScreen(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             )
 
-            WelcomeHubLauncherCard(
-                title = "Scoop Tracker",
-                description = "Log your daily scoops",
-                icon = Icons.Filled.FitnessCenter,
-                accentColor = if (isDarkMode) Color(0xFFFF7A5C) else Color(0xFFD35400),
-                isDarkMode = isDarkMode,
-                statusInfo = "Protein Max: ${maxProtein}g • Creatine Max: ${maxCreatine}g",
-                onClick = { onScreenChange("scoops") },
-                testTag = "goto_scoops"
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                WelcomeHubLauncherCard(
+                    title = "Scoop Tracker",
+                    icon = Icons.Filled.FitnessCenter,
+                    accentColor = if (isDarkMode) Color(0xFFFF7A5C) else Color(0xFFD35400),
+                    isDarkMode = isDarkMode,
+                    onClick = { onScreenChange("scoops") },
+                    modifier = Modifier.weight(1f),
+                    testTag = "goto_scoops"
+                )
 
-            WelcomeHubLauncherCard(
-                title = "Water Intake",
-                description = "Track your water consumption",
-                icon = Icons.Filled.Opacity,
-                accentColor = Color(0xFF00E5FF),
-                isDarkMode = isDarkMode,
-                statusInfo = "Target goal: ${waterGoal} L • Reminders: ${if (waterRemindersEnabled) "On" else "Off"}",
-                onClick = { onScreenChange("water") },
-                testTag = "goto_water"
-            )
+                WelcomeHubLauncherCard(
+                    title = "Water Intake",
+                    icon = Icons.Filled.Opacity,
+                    accentColor = Color(0xFF00E5FF),
+                    isDarkMode = isDarkMode,
+                    onClick = { onScreenChange("water") },
+                    modifier = Modifier.weight(1f),
+                    testTag = "goto_water"
+                )
 
-            WelcomeHubLauncherCard(
-                title = "Nutrition",
-                description = "Log meals & view macros",
-                icon = Icons.Filled.Restaurant,
-                accentColor = Color(0xFF21D021),
-                isDarkMode = isDarkMode,
-                statusInfo = "Calories Target: ${calorieGoal.toInt()} kcal • Logged: ${totalCalories} kcal",
-                onClick = { onScreenChange("nutrition") },
-                testTag = "goto_nutrition"
-            )
+                WelcomeHubLauncherCard(
+                    title = "Nutrition",
+                    icon = Icons.Filled.Restaurant,
+                    accentColor = Color(0xFF21D021),
+                    isDarkMode = isDarkMode,
+                    onClick = { onScreenChange("nutrition") },
+                    modifier = Modifier.weight(1f),
+                    testTag = "goto_nutrition"
+                )
+            }
         }
 
 
