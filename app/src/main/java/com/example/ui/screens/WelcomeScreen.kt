@@ -108,13 +108,13 @@ fun NeonProgressDial(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(8.dp)
         ) {
             if (icon != null) {
                 icon()
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
             } else {
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(2.dp))
             }
             
             if (fractionOnSameLine) {
@@ -140,12 +140,12 @@ fun NeonProgressDial(
                 val isAction = valueMain.startsWith("Add")
                 Text(
                     text = valueMain,
-                    fontSize = if (isAction) 15.sp else 22.sp,
+                    fontSize = if (isAction) 15.sp else 21.sp,
                     fontWeight = FontWeight.Bold,
                     color = textColor,
                     maxLines = 1
                 )
-                Spacer(modifier = Modifier.height(if (isAction) 1.dp else 4.dp))
+                Spacer(modifier = Modifier.height(1.dp))
                 Text(
                     text = valueFraction,
                     fontSize = 11.sp,
@@ -155,15 +155,15 @@ fun NeonProgressDial(
             }
             
             if (indicators != null) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 indicators()
             }
             
             if (percentageText.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(1.dp))
                 Text(
                     text = percentageText,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = neonColor
                 )
@@ -262,8 +262,10 @@ fun WelcomeHubStatsOverview(
     onCaloriesDialClick: () -> Unit = {}
 ) {
     val totalActiveSupplements = supplements.size
-    val loggedSupplementIds = supplementLogsToday.map { it.supplementId }.toSet()
-    val numberLoggedToday = supplements.count { it.id in loggedSupplementIds }
+    val numberLoggedToday = supplements.count { supp ->
+        val loggedAmount = supplementLogsToday.filter { it.supplementId == supp.id }.sumOf { it.amount }
+        loggedAmount >= supp.dailyTarget
+    }
     
     val scoopsProgress = if (totalActiveSupplements > 0) numberLoggedToday.toFloat() / totalActiveSupplements.toFloat() else 0f
     val waterProgress = if (waterGoalLtr > 0) (totalWaterMl / 1000f) / waterGoalLtr.toFloat() else 0f
@@ -327,37 +329,63 @@ fun WelcomeHubStatsOverview(
                     } else null,
                     indicators = if (totalActiveSupplements > 0) {
                         {
-                            val maxDots = 5
-                            val displaySupps = supplements.take(maxDots)
-                            val remainingCount = supplements.size - maxDots
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            val row1 = supplements.take(5)
+                            val row2 = supplements.drop(5).take(5)
+                            
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                displaySupps.forEach { supp ->
-                                    val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.Gray }
-                                    val isLogged = supplementLogsToday.any { it.supplementId == supp.id }
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .background(
-                                                color = if (isLogged) color else color.copy(alpha = 0.2f),
-                                                shape = CircleShape
-                                            )
-                                            .border(
-                                                width = 0.5.dp,
-                                                color = if (isLogged) Color.Transparent else color.copy(alpha = 0.5f),
-                                                shape = CircleShape
-                                            )
-                                    )
+                                // Row 1
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    row1.forEach { supp ->
+                                        val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.Gray }
+                                        val loggedAmount = supplementLogsToday.filter { it.supplementId == supp.id }.sumOf { it.amount }
+                                        val isTargetMet = loggedAmount >= supp.dailyTarget
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .background(
+                                                    color = if (isTargetMet) color else color.copy(alpha = 0.2f),
+                                                    shape = CircleShape
+                                                )
+                                                .border(
+                                                    width = 0.5.dp,
+                                                    color = if (isTargetMet) Color.Transparent else color.copy(alpha = 0.5f),
+                                                    shape = CircleShape
+                                                )
+                                        )
+                                    }
                                 }
-                                if (remainingCount > 0) {
-                                    Text(
-                                        text = "+$remainingCount",
-                                        fontSize = 8.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDarkMode) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.6f)
-                                    )
+                                
+                                // Row 2
+                                if (row2.isNotEmpty()) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        row2.forEach { supp ->
+                                            val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.Gray }
+                                            val loggedAmount = supplementLogsToday.filter { it.supplementId == supp.id }.sumOf { it.amount }
+                                            val isTargetMet = loggedAmount >= supp.dailyTarget
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .background(
+                                                        color = if (isTargetMet) color else color.copy(alpha = 0.2f),
+                                                        shape = CircleShape
+                                                    )
+                                                    .border(
+                                                        width = 0.5.dp,
+                                                        color = if (isTargetMet) Color.Transparent else color.copy(alpha = 0.5f),
+                                                        shape = CircleShape
+                                                    )
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

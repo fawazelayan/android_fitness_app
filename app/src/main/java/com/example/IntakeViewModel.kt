@@ -874,6 +874,34 @@ class IntakeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun editSupplement(
+        id: Int,
+        name: String,
+        type: String,
+        servingUnit: String,
+        totalStock: Int,
+        remainingStock: Int,
+        dailyTarget: Int,
+        colorTag: String
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val profile = _activeProfile.value
+            val existing = repository.getSupplementById(id)
+            if (existing != null) {
+                val updated = existing.copy(
+                    name = name,
+                    type = type,
+                    servingUnit = servingUnit,
+                    totalStock = totalStock,
+                    remainingStock = remainingStock,
+                    dailyTarget = dailyTarget,
+                    colorTag = colorTag
+                )
+                repository.updateSupplement(updated)
+            }
+        }
+    }
+
     fun deleteSupplement(id: Int) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             repository.deleteSupplement(id)

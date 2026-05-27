@@ -86,6 +86,7 @@ fun ScoopsTrackerScreen(
 ) {
     val supplements by viewModel.supplements.collectAsStateWithLifecycle()
     val allSupplementLogs by viewModel.allSupplementLogs.collectAsStateWithLifecycle()
+    val supplementLogsToday by viewModel.supplementLogsToday.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var calendarMonthView by remember { mutableStateOf(Calendar.getInstance()) }
@@ -98,6 +99,8 @@ fun ScoopsTrackerScreen(
     }
 
     var showAddBottomSheet by remember { mutableStateOf(false) }
+    var showEditBottomSheet by remember { mutableStateOf(false) }
+    var editingSupplement by remember { mutableStateOf<Supplement?>(null) }
     var selectedSupplementId by remember { mutableStateOf<Int?>(null) }
 
     val monthName = remember(calendarMonthView) {
@@ -241,8 +244,10 @@ fun ScoopsTrackerScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     supplements.forEach { supp ->
+                        val loggedToday = supplementLogsToday.filter { it.supplementId == supp.id }.sumOf { it.amount }
                         SupplementStockCard(
                             supp = supp,
+                            loggedToday = loggedToday,
                             isDarkMode = isDarkMode,
                             themeTextTitle = ThemeTextTitle,
                             themeTextSubtitle = ThemeTextSubtitle,
@@ -252,7 +257,11 @@ fun ScoopsTrackerScreen(
                                 viewModel.logServingToday(supp)
                                 SoundUtil.playConfirmationSound()
                             },
-                            onDelete = { viewModel.deleteSupplement(supp.id) }
+                            onMinus = { viewModel.removeServingToday(supp) },
+                            onEdit = {
+                                editingSupplement = supp
+                                showEditBottomSheet = true
+                            }
                         )
                     }
                 }
@@ -267,8 +276,10 @@ fun ScoopsTrackerScreen(
                 ) {
                     // Show first 3 tubs directly
                     topThree.forEach { supp ->
+                        val loggedToday = supplementLogsToday.filter { it.supplementId == supp.id }.sumOf { it.amount }
                         SupplementStockCard(
                             supp = supp,
+                            loggedToday = loggedToday,
                             isDarkMode = isDarkMode,
                             themeTextTitle = ThemeTextTitle,
                             themeTextSubtitle = ThemeTextSubtitle,
@@ -278,7 +289,11 @@ fun ScoopsTrackerScreen(
                                 viewModel.logServingToday(supp)
                                 SoundUtil.playConfirmationSound()
                             },
-                            onDelete = { viewModel.deleteSupplement(supp.id) }
+                            onMinus = { viewModel.removeServingToday(supp) },
+                            onEdit = {
+                                editingSupplement = supp
+                                showEditBottomSheet = true
+                            }
                         )
                     }
 
@@ -317,8 +332,10 @@ fun ScoopsTrackerScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             remaining.forEach { supp ->
+                                val loggedToday = supplementLogsToday.filter { it.supplementId == supp.id }.sumOf { it.amount }
                                 SupplementStockCard(
                                     supp = supp,
+                                    loggedToday = loggedToday,
                                     isDarkMode = isDarkMode,
                                     themeTextTitle = ThemeTextTitle,
                                     themeTextSubtitle = ThemeTextSubtitle,
@@ -328,7 +345,11 @@ fun ScoopsTrackerScreen(
                                         viewModel.logServingToday(supp)
                                         SoundUtil.playConfirmationSound()
                                     },
-                                    onDelete = { viewModel.deleteSupplement(supp.id) }
+                                    onMinus = { viewModel.removeServingToday(supp) },
+                                    onEdit = {
+                                        editingSupplement = supp
+                                        showEditBottomSheet = true
+                                    }
                                 )
                             }
                         }
@@ -372,7 +393,6 @@ fun ScoopsTrackerScreen(
             "#E040FB"  // Purple
         )
         var selectedColor by remember { mutableStateOf(swatches.first()) }
-        
         val types = listOf("Powder", "Capsule", "Liquid", "Gummy")
         
         var isNameFocused by remember { mutableStateOf(false) }
@@ -380,6 +400,17 @@ fun ScoopsTrackerScreen(
         var isTargetFocused by remember { mutableStateOf(false) }
         val isAnyFocused = isNameFocused || isSizeFocused || isTargetFocused
         
+        val isNameDuplicate = remember(newName, supplements) {
+            newName.trim().isNotEmpty() && supplements.any {
+                it.name.trim().equals(newName.trim(), ignoreCase = true)
+            }
+        }
+        
+        val isSubmitEnabled = newName.isNotBlank() && 
+                !isNameDuplicate && 
+                (newTotalStock.toIntOrNull() ?: 0) > 0 && 
+                (newDailyTarget.toIntOrNull() ?: 0) > 0
+
         ModalBottomSheet(
             onDismissRequest = { showAddBottomSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -424,9 +455,17 @@ fun ScoopsTrackerScreen(
                 
                 OutlinedTextField(
                     value = newName,
-                    onValueChange = { newName = it },
+                    onValueChange = { if (it.length <= 20) newName = it },
                     label = { Text("Tub Name (e.g. Protein, Creatine)") },
                     singleLine = true,
+                    isError = isNameDuplicate,
+                    supportingText = {
+                        if (isNameDuplicate) {
+                            Text("A tub with this name already exists", color = MaterialTheme.colorScheme.error)
+                        } else {
+                            Text("${newName.length}/20 characters", textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+                        }
+                    },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
                         focusedLabelColor = Color(android.graphics.Color.parseColor(selectedColor)),
@@ -484,8 +523,18 @@ fun ScoopsTrackerScreen(
                     
                     OutlinedTextField(
                         value = newDailyTarget,
-                        onValueChange = { newDailyTarget = it.filter { char -> char.isDigit() } },
+                        onValueChange = { input ->
+                            val filtered = input.filter { it.isDigit() }
+                            val targetInt = filtered.toIntOrNull() ?: 0
+                            if (targetInt <= 20) {
+                                newDailyTarget = filtered
+                            }
+                        },
                         label = { Text("Daily Target ($unit)") },
+                        isError = newDailyTarget.isNotEmpty() && (newDailyTarget.toIntOrNull() ?: 0) == 0,
+                        supportingText = {
+                            Text("Max 20 $unit")
+                        },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
@@ -549,7 +598,7 @@ fun ScoopsTrackerScreen(
                     onClick = {
                         val stock = newTotalStock.toIntOrNull() ?: 0
                         val target = newDailyTarget.toIntOrNull() ?: 0
-                        if (newName.isNotBlank() && stock > 0 && target > 0) {
+                        if (isSubmitEnabled && stock > 0 && target > 0) {
                             val unit = when (selectedType) {
                                 "Powder" -> "scoops"
                                 "Capsule" -> "capsules"
@@ -568,7 +617,11 @@ fun ScoopsTrackerScreen(
                             showAddBottomSheet = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(android.graphics.Color.parseColor(selectedColor))),
+                    enabled = isSubmitEnabled,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                        disabledContainerColor = Color.Gray.copy(alpha = 0.5f)
+                    ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().height(48.dp).testTag("confirm_add_supplement")
                 ) {
@@ -580,8 +633,311 @@ fun ScoopsTrackerScreen(
         }
     }
 
+    // Edit Supplement Bottom Sheet
+    if (showEditBottomSheet && editingSupplement != null) {
+        val currentSupp = editingSupplement!!
+        var editName by remember(editingSupplement) { mutableStateOf(currentSupp.name) }
+        var selectedType by remember(editingSupplement) { mutableStateOf(currentSupp.type) }
+        var editTotalStock by remember(editingSupplement) { mutableStateOf(currentSupp.totalStock.toString()) }
+        var editDailyTarget by remember(editingSupplement) { mutableStateOf(currentSupp.dailyTarget.toString()) }
+        var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+        
+        val swatches = listOf(
+            "#FF3333", // Red
+            "#FF9100", // Orange
+            "#FFEB3B", // Yellow
+            "#21D021", // Green
+            "#3377FF", // Blue
+            "#E040FB"  // Purple
+        )
+        var selectedColor by remember(editingSupplement) { mutableStateOf(currentSupp.colorTag) }
+        val types = listOf("Powder", "Capsule", "Liquid", "Gummy")
+        
+        var isNameFocused by remember { mutableStateOf(false) }
+        var isTotalFocused by remember { mutableStateOf(false) }
+        var isTargetFocused by remember { mutableStateOf(false) }
+        val isAnyFocused = isNameFocused || isTotalFocused || isTargetFocused
+        
+        val isNameDuplicate = remember(editName, supplements, editingSupplement) {
+            editName.trim().isNotEmpty() && supplements.any {
+                it.id != currentSupp.id && it.name.trim().equals(editName.trim(), ignoreCase = true)
+            }
+        }
+        
+        val isSubmitEnabled = editName.isNotBlank() && 
+                !isNameDuplicate && 
+                (editTotalStock.toIntOrNull() ?: 0) > 0 && 
+                (editDailyTarget.toIntOrNull() ?: 0) > 0
+
+        ModalBottomSheet(
+            onDismissRequest = { showEditBottomSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = CardWhiteBackground,
+            properties = ModalBottomSheetDefaults.properties(
+                shouldDismissOnBackPress = false
+            )
+        ) {
+            val focusManager = LocalFocusManager.current
+            val keyboardController = LocalSoftwareKeyboardController.current
+            
+            val isKeyboardVisible = WindowInsets.isImeVisible
+            LaunchedEffect(isKeyboardVisible) {
+                if (!isKeyboardVisible) {
+                    focusManager.clearFocus()
+                }
+            }
+            
+            BackHandler(enabled = true) {
+                if (isAnyFocused) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                } else {
+                    showEditBottomSheet = false
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Edit Tub",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ThemeTextTitle
+                    )
+                    IconButton(
+                        onClick = { showDeleteConfirmDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Delete supplement",
+                            tint = Color.Red
+                        )
+                    }
+                }
+                
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { if (it.length <= 20) editName = it },
+                    label = { Text("Tub Name (e.g. Protein, Creatine)") },
+                    singleLine = true,
+                    isError = isNameDuplicate,
+                    supportingText = {
+                        if (isNameDuplicate) {
+                            Text("A tub with this name already exists", color = MaterialTheme.colorScheme.error)
+                        } else {
+                            Text("${editName.length}/20 characters", textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                        focusedLabelColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                        cursorColor = Color(android.graphics.Color.parseColor(selectedColor))
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { isNameFocused = it.isFocused }
+                )
+                
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Type", fontSize = 12.sp, color = ThemeTextSubtitle, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        types.forEach { type ->
+                            val isSelected = selectedType == type
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedType = type },
+                                label = { Text(type, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    val unit = when (selectedType) {
+                        "Powder" -> "scoops"
+                        "Capsule" -> "capsules"
+                        "Liquid" -> "ml"
+                        "Gummy" -> "gummies"
+                        else -> "servings"
+                    }
+                    
+                    OutlinedTextField(
+                        value = editTotalStock,
+                        onValueChange = { editTotalStock = it.filter { char -> char.isDigit() } },
+                        label = { Text("Tub Size ($unit)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                            focusedLabelColor = Color(android.graphics.Color.parseColor(selectedColor))
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { isTotalFocused = it.isFocused }
+                    )
+
+                    OutlinedTextField(
+                        value = editDailyTarget,
+                        onValueChange = { input ->
+                            val filtered = input.filter { it.isDigit() }
+                            val targetInt = filtered.toIntOrNull() ?: 0
+                            if (targetInt <= 20) {
+                                editDailyTarget = filtered
+                            }
+                        },
+                        label = { Text("Daily Target ($unit)") },
+                        isError = editDailyTarget.isNotEmpty() && (editDailyTarget.toIntOrNull() ?: 0) == 0,
+                        supportingText = {
+                            Text("Max 20 $unit")
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                            focusedLabelColor = Color(android.graphics.Color.parseColor(selectedColor))
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { isTargetFocused = it.isFocused }
+                    )
+                }
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Visual Color Swatch",
+                        fontSize = 12.sp,
+                        color = ThemeTextSubtitle,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    
+                    // Presets Swatches Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        swatches.forEach { hexColor ->
+                            val isSelected = selectedColor == hexColor
+                            val color = Color(android.graphics.Color.parseColor(hexColor))
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(
+                                        width = if (isSelected) 3.dp else 0.dp,
+                                        color = if (isSelected) ThemeTextTitle else Color.Transparent,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { selectedColor = hexColor }
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    // Custom Color Wheel
+                    ColorWheel(
+                        selectedColorHex = selectedColor,
+                        isDarkMode = isDarkMode,
+                        onColorChange = { selectedColor = it }
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        val stock = editTotalStock.toIntOrNull() ?: 0
+                        val target = editDailyTarget.toIntOrNull() ?: 0
+                        if (isSubmitEnabled && stock > 0 && target > 0) {
+                            val unit = when (selectedType) {
+                                "Powder" -> "scoops"
+                                "Capsule" -> "capsules"
+                                "Liquid" -> "ml"
+                                "Gummy" -> "gummies"
+                                else -> "servings"
+                            }
+                            val totalLoggedCount = allSupplementLogs.filter { it.supplementId == currentSupp.id }.sumOf { it.amount }
+                            val calculatedRemaining = (stock - totalLoggedCount).coerceAtLeast(0)
+                            viewModel.editSupplement(
+                                id = currentSupp.id,
+                                name = editName,
+                                type = selectedType,
+                                servingUnit = unit,
+                                totalStock = stock,
+                                remainingStock = calculatedRemaining,
+                                dailyTarget = target,
+                                colorTag = selectedColor
+                            )
+                            showEditBottomSheet = false
+                        }
+                    },
+                    enabled = isSubmitEnabled,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(android.graphics.Color.parseColor(selectedColor)),
+                        disabledContainerColor = Color.Gray.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
+        if (showDeleteConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmDialog = false },
+                title = { Text("Delete Tub", color = ThemeTextTitle) },
+                text = { Text("Are you sure you want to delete '${currentSupp.name}'? This action cannot be undone and will delete all log history for this tub.", color = ThemeTextSubtitle) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.deleteSupplement(currentSupp.id)
+                            showDeleteConfirmDialog = false
+                            showEditBottomSheet = false
+                        }
+                    ) {
+                        Text("Delete", color = Color.Red, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                        Text("Cancel", color = ThemeTextSubtitle)
+                    }
+                },
+                containerColor = CardWhiteBackground
+            )
+        }
+    }
+
     // Calendar Click Confirmation Dialog
     calendarClickDate?.let { dateStr ->
+        var isCalendarExpanded by remember { mutableStateOf(false) }
+        val visibleSupps = if (isCalendarExpanded) supplements else supplements.take(3)
+        val remainingCount = supplements.size - 3
+
         AlertDialog(
             onDismissRequest = { calendarClickDate = null },
             title = {
@@ -602,11 +958,14 @@ fun ScoopsTrackerScreen(
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
                     if (supplements.isEmpty()) {
                         Text("No tubs configured yet.", color = ThemeTextSubtitle, fontSize = 13.sp)
                     } else {
-                        supplements.forEach { supp ->
+                        visibleSupps.forEach { supp ->
                             val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.LightGray }
                             val dayLogs = allSupplementLogs.filter { it.date == dateStr && it.supplementId == supp.id }
                             val loggedCount = dayLogs.size
@@ -629,7 +988,7 @@ fun ScoopsTrackerScreen(
                                     
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         // Minus Button
                                         IconButton(
@@ -639,6 +998,15 @@ fun ScoopsTrackerScreen(
                                         ) {
                                             Icon(Icons.Filled.Remove, contentDescription = "Remove", tint = color, modifier = Modifier.size(16.dp))
                                         }
+
+                                        Text(
+                                            text = "$loggedCount",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ThemeTextTitle,
+                                            modifier = Modifier.width(20.dp),
+                                            textAlign = TextAlign.Center
+                                        )
                                         
                                         // Plus Button
                                         IconButton(
@@ -650,6 +1018,31 @@ fun ScoopsTrackerScreen(
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        if (supplements.size > 3) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isCalendarExpanded = !isCalendarExpanded }
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (isCalendarExpanded) "Show Less" else "Show More ($remainingCount)",
+                                    color = ThemeTextSubtitle,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = if (isCalendarExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Toggle",
+                                    tint = ThemeTextSubtitle,
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
                     }
@@ -671,34 +1064,42 @@ fun ScoopsTrackerScreen(
 @Composable
 fun SupplementStockCard(
     supp: Supplement,
+    loggedToday: Int,
     isDarkMode: Boolean,
     themeTextTitle: Color,
     themeTextSubtitle: Color,
     cardBg: Color,
     borderColor: Color,
     onLog: () -> Unit,
-    onDelete: () -> Unit
+    onMinus: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val color = try { Color(android.graphics.Color.parseColor(supp.colorTag)) } catch(e: Exception) { Color.LightGray }
+    val isTargetMet = loggedToday >= supp.dailyTarget
     
     Card(
         colors = CardDefaults.cardColors(containerColor = cardBg),
         border = BorderStroke(1.dp, borderColor),
         shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth().testTag("supplement_card_${supp.name}")
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onEdit() }
+            .testTag("supplement_card_${supp.name}")
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Circular progress stock ring
+            // 1. Circular progress stock ring
             Box(
-                modifier = Modifier.size(68.dp),
+                modifier = Modifier.size(56.dp),
                 contentAlignment = Alignment.Center
             ) {
                 val progress = if (supp.totalStock > 0) supp.remainingStock.toFloat() / supp.totalStock.toFloat() else 0f
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val strokeW = 6.dp.toPx()
+                    val strokeW = 5.dp.toPx()
                     drawArc(
                         color = color.copy(alpha = 0.12f),
                         startAngle = 0f,
@@ -719,19 +1120,23 @@ fun SupplementStockCard(
                     val pct = (progress * 100).toInt()
                     Text(
                         text = "$pct%",
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = themeTextTitle
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            // 2. Middle Column: Text details
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     text = supp.name,
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = themeTextTitle
                 )
@@ -740,49 +1145,83 @@ fun SupplementStockCard(
                     fontSize = 11.sp,
                     color = themeTextSubtitle
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Stock: ${supp.remainingStock} / ${supp.totalStock} left",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = color
                 )
+                
+                // Daily Target Badge
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(
+                            color = if (isTargetMet) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFFFF9800).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isTargetMet) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        contentDescription = if (isTargetMet) "Target Reached" else "Target Pending",
+                        tint = if (isTargetMet) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (isTargetMet) "Target Reached!" else "Target Pending ($loggedToday/${supp.dailyTarget})",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isTargetMet) Color(0xFF4CAF50) else Color(0xFFFF9800)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // 3. Far Right Column: Aligned - and + buttons (stacked vertically)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Minus Button
+                IconButton(
+                    onClick = onMinus,
+                    enabled = loggedToday > 0,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(
+                            if (loggedToday > 0) color.copy(alpha = 0.15f) else color.copy(alpha = 0.05f),
+                            CircleShape
+                        )
+                        .testTag("minus_serving_btn_${supp.name}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Remove,
+                        contentDescription = "Remove serving",
+                        tint = if (loggedToday > 0) color else color.copy(alpha = 0.3f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Plus Button
                 IconButton(
                     onClick = onLog,
                     enabled = supp.remainingStock > 0,
                     modifier = Modifier
                         .size(36.dp)
-                        .background(color.copy(alpha = 0.15f), CircleShape)
+                        .background(
+                            if (supp.remainingStock > 0) color.copy(alpha = 0.15f) else color.copy(alpha = 0.05f),
+                            CircleShape
+                        )
                         .testTag("log_serving_btn_${supp.name}")
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Add,
+                        imageVector = Icons.Default.Add,
                         contentDescription = "Log serving",
-                        tint = color,
+                        tint = if (supp.remainingStock > 0) color else color.copy(alpha = 0.3f),
                         modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(Color.Red.copy(alpha = 0.1f), CircleShape)
-                        .testTag("delete_supplement_btn_${supp.name}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = "Delete tub",
-                        tint = Color.Red,
-                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -812,6 +1251,12 @@ fun MonthlyCalendarSection(
     textSubColor: Color
 ) {
     val textMeasurer = rememberTextMeasurer()
+
+    val todayStr = remember {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        sdf.format(Date())
+    }
+    val context = LocalContext.current
 
     Card(
         colors = CardDefaults.cardColors(containerColor = cardBackground),
@@ -914,7 +1359,11 @@ fun MonthlyCalendarSection(
                             val cellIndex = row * 7 + col
                             if (cellIndex >= startOffset && cellIndex < days.list.size + startOffset) {
                                 val dateStr = days.list[cellIndex - startOffset]
-                                onDayClick(dateStr)
+                                if (dateStr > todayStr) {
+                                    Toast.makeText(context, "Cannot log servings for future dates.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    onDayClick(dateStr)
+                                }
                             }
                         }
                     }
@@ -931,10 +1380,11 @@ fun MonthlyCalendarSection(
                         if (cellIndex >= startOffset && cellIndex < totalCells) {
                             val dayDateStr = days.list[cellIndex - startOffset]
                             val dayNum = (cellIndex - startOffset + 1).toString()
+                            val isFuture = dayDateStr > todayStr
                             
                             val dayLogs = supplementLogs.filter { it.date == dayDateStr }
                             val loggedSupplements = supplements.filter { supp -> dayLogs.any { it.supplementId == supp.id } }
-                            val isAnyLogged = loggedSupplements.isNotEmpty()
+                            val isAnyLogged = loggedSupplements.isNotEmpty() && !isFuture
 
                             val cellLeft = colIndex * cellW
                             val cellTop = rowIndex * cellH
@@ -966,7 +1416,7 @@ fun MonthlyCalendarSection(
 
                             // 3. Draw Text
                             val textStyle = TextStyle(
-                                color = textTitleColor,
+                                color = if (isFuture) textTitleColor.copy(alpha = 0.25f) else textTitleColor,
                                 fontSize = 12.sp,
                                 fontWeight = if (isAnyLogged) FontWeight.Bold else FontWeight.Normal
                             )
